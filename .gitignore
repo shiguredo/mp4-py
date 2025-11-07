@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+_build/
+_source/
+_install/
+dist/
+wheels/
+*.egg-info
+.venv
+.ruff_cache
+.mypy_cache
+
+# macos
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Codex
+.codex/
