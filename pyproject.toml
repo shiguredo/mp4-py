@@ -1,3 +1,7 @@
+[build-system]
+requires = ["scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
 [project]
 name = "mp4-py"
 authors = [{ name = "Shiguredo Inc.", email = "contact+pypi@shiguredo.jp" }]
@@ -22,13 +26,11 @@ requires-python = ">=3.12"
 Source = "https://github.com/shiguredo/mp4-py"
 Discord = "https://discord.gg/shiguredo"
 
-[build-system]
-requires = ["scikit-build-core>=0.11"]
-build-backend = "scikit_build_core.build"
-
 [dependency-groups]
+dev = [{ include-group = "test" }, { include-group = "lint" }]
 test = ["pytest", "pytest-timeout"]
 lint = ["ruff", "ty"]
+pypi = ["auditwheel", "patchelf"]
 
 [tool.scikit-build]
 minimum-version = "0.11"
@@ -38,9 +40,6 @@ build-dir = "_build"
 [tool.scikit-build.cmake]
 version = ">=4.1"
 args = ["-DCMAKE_BUILD_TYPE=Release"]
-
-[tool.scikit-build.ninja]
-version = ">=1.10"
 
 [tool.scikit-build.wheel]
 packages = ["src/mp4"]
@@ -54,7 +53,7 @@ regex = "^(?P<value>.+)$"
 [tool.uv]
 package = false
 managed = true
-default-groups = ["test", "lint"]
+python-preference = "only-managed"
 
 [tool.ruff]
 target-version = "py312"
