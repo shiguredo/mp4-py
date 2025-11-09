@@ -62,17 +62,17 @@ ExternalProject_Add(mp4_rust
 
 # wheel パッケージにはヘッダとライブラリをコピー
 install(FILES ${MP4_SOURCE_DIR}/include/mp4.h
-  DESTINATION mp4_py/include
+  DESTINATION mp4/include
 )
 
 # 動的ライブラリを wheel パッケージにインストール
 if(APPLE)
   install(FILES ${MP4_LIB_INSTALL_DIR}/libmp4.dylib
-    DESTINATION mp4_py/lib
+    DESTINATION mp4/lib
   )
 elseif(UNIX AND NOT APPLE)
   install(FILES ${MP4_LIB_INSTALL_DIR}/libmp4.so
-    DESTINATION mp4_py/lib
+    DESTINATION mp4/lib
   )
 endif()
 
