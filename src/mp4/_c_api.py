@@ -239,9 +239,7 @@ def _load_library() -> ctypes.CDLL:
                 except OSError:
                     continue
 
-    # 2. wheel インストール時: mp4_py/lib から探す
-    #
-    # TODO(sile): この方法でいいのかどうかは要確認
+    # 2. wheel インストール時: mp4/lib から探す
     package_lib_dir = Path(__file__).parent / "lib"
     if package_lib_dir.exists():
         for lib_name in lib_names:
