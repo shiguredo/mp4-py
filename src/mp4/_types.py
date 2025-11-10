@@ -232,23 +232,27 @@ class Mp4SampleEntryHev1:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
         nalu_types_array = (ctypes.c_uint8 * len(self.nalu_types))(*self.nalu_types)
 
-        # NALU data バッファを作成
-        nalu_data_arrays = []
+        # NALU サイズ配列を作成
         nalu_sizes = (ctypes.c_uint32 * len(self.nalu_data))()
-
         for i, data in enumerate(self.nalu_data):
-            nalu_array = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
-            nalu_data_arrays.append(nalu_array)
             nalu_sizes[i] = len(data)
 
-        # 連続したデータバッファを作成
-        total_size = sum(len(d) for d in self.nalu_data)
-        combined_data = (ctypes.c_uint8 * total_size)()
-        offset = 0
-        for data in self.nalu_data:
-            for i, byte in enumerate(data):
-                combined_data[offset + i] = byte
-            offset += len(data)
+        # nalu_counts: 各 NALU タイプごとのユニット数
+        # 現在の実装では、各タイプごとに 1 つのユニットを想定
+        nalu_counts = (ctypes.c_uint32 * len(self.nalu_types))()
+        for i in range(len(self.nalu_types)):
+            nalu_counts[i] = 1
+
+        # 各 NALU データ用のバッファを作成（メモリ保持用）
+        nalu_data_buffers = []
+        nalu_data_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.nalu_data))()
+
+        for i, data in enumerate(self.nalu_data):
+            # バッファを作成して保持
+            buf = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
+            nalu_data_buffers.append(buf)
+            # ポインタの配列に登録
+            nalu_data_pointers[i] = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint8))
 
         raw_hev1 = _RawMp4SampleEntryHev1()
         raw_hev1.width = self.width
@@ -271,7 +275,8 @@ class Mp4SampleEntryHev1:
         raw_hev1.length_size_minus_one = self.length_size_minus_one
         raw_hev1.nalu_array_count = len(self.nalu_types)
         raw_hev1.nalu_types = ctypes.cast(nalu_types_array, ctypes.POINTER(ctypes.c_uint8))
-        raw_hev1.nalu_data = ctypes.cast(combined_data, ctypes.POINTER(ctypes.c_uint8))
+        raw_hev1.nalu_counts = ctypes.cast(nalu_counts, ctypes.POINTER(ctypes.c_uint32))
+        raw_hev1.nalu_data = ctypes.cast(nalu_data_pointers, ctypes.POINTER(ctypes.c_uint8))
         raw_hev1.nalu_sizes = nalu_sizes
 
         yield raw_hev1

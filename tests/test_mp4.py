@@ -258,8 +258,8 @@ def test_video_sample_entry_hev1():
         height=VIDEO_HEIGHT,
         general_profile_idc=2,  # Main 10
         general_level_idc=120,  # Level 4.0
-        nalu_types=[33],        # SPS
-        nalu_data=[b"dummy"],   # テスト用のダミーデータ
+        nalu_types=[33],  # SPS
+        nalu_data=[b"dummy"],  # テスト用のダミーデータ
     )
 
     mux_sample = Mp4MuxSample(
