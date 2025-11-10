@@ -230,6 +230,14 @@ class Mp4SampleEntryHev1:
     @contextmanager
     def _to_raw(self) -> Generator[_RawMp4SampleEntryHev1, None, None]:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
+
+        # nalu_types と nalu_data の長さが等しいことをチェックする
+        if len(self.nalu_types) != len(self.nalu_data):
+            raise ValueError(
+                f"nalu_types and nalu_data must have the same length. "
+                f"nalu_types: {len(self.nalu_types)}, nalu_data: {len(self.nalu_data)}"
+            )
+
         nalu_types_array = (ctypes.c_uint8 * len(self.nalu_types))(*self.nalu_types)
 
         # NALU サイズ配列を作成
