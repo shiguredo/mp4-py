@@ -1,11 +1,15 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 4.1)
 project(mp4-py)
 
 include(ExternalProject)
 
+# deps.json からバージョン情報を読み込む
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/deps.json" DEPS_JSON)
+string(JSON MP4_VERSION GET ${DEPS_JSON} "mp4-rust" "version")
+string(JSON MP4_REPOSITORY GET ${DEPS_JSON} "mp4-rust" "repository")
+
 # mp4-rust GitHub Release アーティファクトの設定
-set(MP4_VERSION "2025.3.0" CACHE STRING "mp4-rust のバージョン")
-set(MP4_BASE_URL "https://github.com/shiguredo/mp4-rust/releases/download/${MP4_VERSION}" CACHE STRING "mp4-rust リリースの基本 URL")
+set(MP4_BASE_URL "${MP4_REPOSITORY}/releases/download/${MP4_VERSION}")
 
 # プラットフォーム別のアーティファクト名を決定
 if(APPLE)
