@@ -33,9 +33,11 @@ jobs:
           enable-cache: false
       - run: |
           uv python pin ${{ matrix.python_version }}
-      - run: uv run --with mypy stubgen src/mp4 -o src
-      - run: uv build --wheel --out-dir wheelhouse
-      - name: Upload Artifact
+      - name: Generate stub files
+        run: uv run --with mypy stubgen src/mp4 -o src
+      - name: Build wheel
+        run: uv build --wheel --out-dir wheelhouse
+      - name: Upload wheels
         uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
