@@ -1,6 +1,7 @@
 # mp4-py
 
 [![PyPI](https://img.shields.io/pypi/v/mp4-py)](https://pypi.org/project/mp4-py/)
+[![SPEC 0 — Minimum Supported Dependencies](https://img.shields.io/badge/SPEC-0-green?labelColor=%23004811&color=%235CA038)](https://scientific-python.org/specs/spec-0000/)
 [![image](https://img.shields.io/pypi/pyversions/mp4-py.svg)](https://pypi.python.org/pypi/mp4-py)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Actions status](https://github.com/shiguredo/mp4-py/workflows/wheel/badge.svg)](https://github.com/shiguredo/mp4-py/actions)
