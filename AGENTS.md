@@ -47,3 +47,5 @@
 
 - Python の命名規則に従うこと
 - `pip` を使わず `uv` を使うこと
+- `uv run ruff format` でコードをフォーマットすること
+- `uv run ruff check` でコードを静的解析すること
