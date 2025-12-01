@@ -4,7 +4,12 @@ from typing import Optional
 import io
 
 from mp4._c_api import _get_lib, _RawMp4MuxSample, _RawMp4Error
-from mp4._types import Mp4TrackKind, _to_raw_mp4_track_kind, _to_raw_mp4_sample_entry
+from mp4._types import (
+    Mp4SampleEntry,
+    Mp4TrackKind,
+    _to_raw_mp4_sample_entry,
+    _to_raw_mp4_track_kind,
+)
 
 
 class Mp4FileMuxerOptions:
@@ -64,7 +69,7 @@ class Mp4MuxSample:
     def __init__(
         self,
         track_kind: Mp4TrackKind,
-        sample_entry: Optional["Mp4SampleEntry"],
+        sample_entry: Optional[Mp4SampleEntry],
         keyframe: bool,
         timescale: int,
         duration: int,
