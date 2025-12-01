@@ -1,11 +1,10 @@
-import ctypes
 import io
 from pathlib import Path
 from typing import Iterator, Optional, List
 
-from mp4._c_api import _get_lib, _RawMp4DemuxSample, _RawMp4DemuxTrackInfo, _RawMp4Error
+from mp4._c_api import ffi, _get_lib, Mp4Error
 from mp4._types import (
-    Mp4TrackKind,
+    Mp4TrackKindLiteral,
     _from_raw_mp4_track_kind,
     _from_raw_mp4_sample_entry,
     Mp4SampleEntry,
@@ -15,7 +14,7 @@ from mp4._types import (
 class Mp4TrackInfo:
     """トラック情報"""
 
-    def __init__(self, track_id: int, kind: Mp4TrackKind, duration: int, timescale: int):
+    def __init__(self, track_id: int, kind: Mp4TrackKindLiteral, duration: int, timescale: int):
         self.track_id = track_id
         self.kind = kind
         self.duration = duration
@@ -141,7 +140,7 @@ class Mp4FileDemuxer:
 
         # C API の demuxer を初期化
         self._raw_demuxer = self._lib.mp4_file_demuxer_new()
-        if not self._raw_demuxer:
+        if self._raw_demuxer == ffi.NULL:
             raise RuntimeError("Failed to create mp4 demuxer")
 
     def __enter__(self) -> "Mp4FileDemuxer":
@@ -164,33 +163,33 @@ class Mp4FileDemuxer:
             self._input_stream = None
 
     def _check_error(self, error_code: int) -> None:
-        if error_code == _RawMp4Error.OK:
+        if error_code == Mp4Error.OK:
             return
 
-        msg = self._lib.mp4_file_demuxer_get_last_error(self._raw_demuxer).decode()
+        msg = ffi.string(self._lib.mp4_file_demuxer_get_last_error(self._raw_demuxer)).decode()
 
-        if error_code == _RawMp4Error.NO_MORE_SAMPLES:
+        if error_code == Mp4Error.NO_MORE_SAMPLES:
             raise StopIteration()
-        elif error_code == _RawMp4Error.NULL_POINTER:
+        elif error_code == Mp4Error.NULL_POINTER:
             raise ValueError(f"Null pointer error: {msg}")
-        elif error_code == _RawMp4Error.INPUT_REQUIRED:
+        elif error_code == Mp4Error.INPUT_REQUIRED:
             raise RuntimeError(f"Input required: {msg}")
         else:
             raise RuntimeError(f"MP4 error ({error_code}): {msg}")
 
     def _feed_required_input(self) -> None:
         while True:
-            required_pos = ctypes.c_uint64()
-            required_size = ctypes.c_int32()
+            required_pos = ffi.new("uint64_t*")
+            required_size = ffi.new("int32_t*")
 
             error = self._lib.mp4_file_demuxer_get_required_input(
-                self._raw_demuxer, ctypes.byref(required_pos), ctypes.byref(required_size)
+                self._raw_demuxer, required_pos, required_size
             )
             self._check_error(error)
 
             # ストリームから必要なデータを読み込む
-            pos = required_pos.value
-            size = required_size.value
+            pos = required_pos[0]
+            size = required_size[0]
 
             if size == 0:
                 # 必要なデータは全て読んだ
@@ -205,7 +204,7 @@ class Mp4FileDemuxer:
                 self._input_stream.seek(pos)
                 data = self._input_stream.read(size)
 
-            buffer = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
+            buffer = ffi.from_buffer("uint8_t[]", data)
             error = self._lib.mp4_file_demuxer_handle_input(
                 self._raw_demuxer, pos, buffer, len(data)
             )
@@ -218,20 +217,20 @@ class Mp4FileDemuxer:
             raise RuntimeError("Demuxer is closed")
 
         while True:
-            tracks_ptr = ctypes.POINTER(_RawMp4DemuxTrackInfo)()
-            track_count = ctypes.c_uint32()
+            tracks_ptr = ffi.new("Mp4DemuxTrackInfo**")
+            track_count = ffi.new("uint32_t*")
 
             error = self._lib.mp4_file_demuxer_get_tracks(
-                self._raw_demuxer, ctypes.byref(tracks_ptr), ctypes.byref(track_count)
+                self._raw_demuxer, tracks_ptr, track_count
             )
-            if error == _RawMp4Error.INPUT_REQUIRED:
+            if error == Mp4Error.INPUT_REQUIRED:
                 self._feed_required_input()
                 continue
             self._check_error(error)
 
             track_info_list = []
-            for i in range(track_count.value):
-                track = tracks_ptr[i]
+            for i in range(track_count[0]):
+                track = tracks_ptr[0][i]
                 track_info = Mp4TrackInfo(
                     track_id=track.track_id,
                     kind=_from_raw_mp4_track_kind(track.kind),
@@ -253,24 +252,24 @@ class Mp4FileDemuxer:
             raise RuntimeError("Demuxer is closed")
 
         while True:
-            sample = _RawMp4DemuxSample()
-            error = self._lib.mp4_file_demuxer_next_sample(self._raw_demuxer, ctypes.byref(sample))
-            if error == _RawMp4Error.INPUT_REQUIRED:
+            sample = ffi.new("Mp4DemuxSample*")
+            error = self._lib.mp4_file_demuxer_next_sample(self._raw_demuxer, sample)
+            if error == Mp4Error.INPUT_REQUIRED:
                 self._feed_required_input()
                 continue
             self._check_error(error)
 
             track_info = Mp4TrackInfo(
-                track_id=sample.track.contents.track_id,
-                kind=_from_raw_mp4_track_kind(sample.track.contents.kind),
-                duration=sample.track.contents.duration,
-                timescale=sample.track.contents.timescale,
+                track_id=sample.track.track_id,
+                kind=_from_raw_mp4_track_kind(sample.track.kind),
+                duration=sample.track.duration,
+                timescale=sample.track.timescale,
             )
 
             # sample_entry を変換
             sample_entry = None
-            if sample.sample_entry:  # 前のサンプルと値が同じ場合は NULL (False 扱い) になる
-                sample_entry = _from_raw_mp4_sample_entry(sample.sample_entry.contents)
+            if sample.sample_entry != ffi.NULL:  # 前のサンプルと値が同じ場合は NULL になる
+                sample_entry = _from_raw_mp4_sample_entry(sample.sample_entry[0])
 
             return Mp4DemuxSample(
                 track=track_info,

@@ -1,40 +1,32 @@
 # https://github.com/shiguredo/mp4-rust/blob/develop/crates/c-api/include/mp4.h で定義されている構造体などを Python 用に使いやすくラップするためのモジュール
 #
 # なお、各処理固有の構造体などはそれぞれの専用モジュール（例えば _mux.py）で定義されている
-import ctypes
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal, List, Optional, Generator
+from typing import Literal, List, Optional, Generator, Any
 
 from mp4._c_api import (
-    _RawMp4TrackKind,
-    _RawMp4SampleEntry,
-    _RawMp4SampleEntryAvc1,
-    _RawMp4SampleEntryHev1,
-    _RawMp4SampleEntryVp08,
-    _RawMp4SampleEntryVp09,
-    _RawMp4SampleEntryAv01,
-    _RawMp4SampleEntryOpus,
-    _RawMp4SampleEntryMp4a,
-    _RawMp4SampleEntryKind,
+    ffi,
+    Mp4TrackKind,
+    Mp4SampleEntryKind,
 )
 
-Mp4TrackKind = Literal["audio", "video"]
+Mp4TrackKindLiteral = Literal["audio", "video"]
 """
 MP4 ファイル内のトラックの種類を表す型
 """
 
 
-def _from_raw_mp4_track_kind(raw_kind: _RawMp4TrackKind) -> Mp4TrackKind:
-    if raw_kind == _RawMp4TrackKind.AUDIO:
+def _from_raw_mp4_track_kind(raw_kind: int) -> Mp4TrackKindLiteral:
+    if raw_kind == Mp4TrackKind.AUDIO:
         return "audio"
-    elif raw_kind == _RawMp4TrackKind.VIDEO:
+    elif raw_kind == Mp4TrackKind.VIDEO:
         return "video"
     else:
         raise ValueError(f"Unknown track kind: {raw_kind}")
 
 
-def _to_raw_mp4_track_kind(kind: Mp4TrackKind) -> int:
+def _to_raw_mp4_track_kind(kind: Mp4TrackKindLiteral) -> int:
     return {"audio": 0, "video": 1}[kind]
 
 
@@ -57,21 +49,21 @@ class Mp4SampleEntryAvc1:
     bit_depth_chroma_minus8: Optional[int] = None
 
     @staticmethod
-    def _from_raw(raw_avc1: _RawMp4SampleEntryAvc1) -> "Mp4SampleEntryAvc1":
+    def _from_raw(raw_avc1: Any) -> "Mp4SampleEntryAvc1":
         # SPS データを抽出
         sps_data = []
-        if raw_avc1.sps_count > 0 and raw_avc1.sps_data and raw_avc1.sps_sizes:
+        if raw_avc1.sps_count > 0 and raw_avc1.sps_data != ffi.NULL and raw_avc1.sps_sizes != ffi.NULL:
             for i in range(raw_avc1.sps_count):
                 size = raw_avc1.sps_sizes[i]
-                data = bytes(raw_avc1.sps_data[i][:size])
+                data = bytes(ffi.buffer(raw_avc1.sps_data[i], size))
                 sps_data.append(data)
 
         # PPS データを抽出
         pps_data = []
-        if raw_avc1.pps_count > 0 and raw_avc1.pps_data and raw_avc1.pps_sizes:
+        if raw_avc1.pps_count > 0 and raw_avc1.pps_data != ffi.NULL and raw_avc1.pps_sizes != ffi.NULL:
             for i in range(raw_avc1.pps_count):
                 size = raw_avc1.pps_sizes[i]
-                data = bytes(raw_avc1.pps_data[i][:size])
+                data = bytes(ffi.buffer(raw_avc1.pps_data[i], size))
                 pps_data.append(data)
 
         # オプションのクロマ形式情報を抽出
@@ -100,31 +92,33 @@ class Mp4SampleEntryAvc1:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryAvc1, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        sps_arrays = []
-        sps_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.sps_data))()
-        sps_sizes = (ctypes.c_uint32 * len(self.sps_data))()
+
+        # SPS バッファを作成
+        sps_buffers = []
+        sps_pointers = ffi.new("uint8_t*[]", len(self.sps_data))
+        sps_sizes = ffi.new("uint32_t[]", len(self.sps_data))
 
         for i, sps in enumerate(self.sps_data):
-            sps_array = (ctypes.c_uint8 * len(sps)).from_buffer_copy(sps)
-            sps_arrays.append(sps_array)
-            sps_pointers[i] = ctypes.cast(sps_array, ctypes.POINTER(ctypes.c_uint8))
+            sps_buf = ffi.new("uint8_t[]", sps)
+            sps_buffers.append(sps_buf)
+            sps_pointers[i] = sps_buf
             sps_sizes[i] = len(sps)
 
         # PPS バッファを作成
-        pps_arrays = []
-        pps_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.pps_data))()
-        pps_sizes = (ctypes.c_uint32 * len(self.pps_data))()
+        pps_buffers = []
+        pps_pointers = ffi.new("uint8_t*[]", len(self.pps_data))
+        pps_sizes = ffi.new("uint32_t[]", len(self.pps_data))
 
         for i, pps in enumerate(self.pps_data):
-            pps_array = (ctypes.c_uint8 * len(pps)).from_buffer_copy(pps)
-            pps_arrays.append(pps_array)
-            pps_pointers[i] = ctypes.cast(pps_array, ctypes.POINTER(ctypes.c_uint8))
+            pps_buf = ffi.new("uint8_t[]", pps)
+            pps_buffers.append(pps_buf)
+            pps_pointers[i] = pps_buf
             pps_sizes[i] = len(pps)
 
         # raw 構造体を構築
-        raw_avc1 = _RawMp4SampleEntryAvc1()
+        raw_avc1 = ffi.new("Mp4SampleEntryAvc1*")
         raw_avc1.width = self.width
         raw_avc1.height = self.height
         raw_avc1.avc_profile_indication = self.avc_profile_indication
@@ -152,7 +146,7 @@ class Mp4SampleEntryAvc1:
             raw_avc1.is_bit_depth_chroma_minus8_present = True
             raw_avc1.bit_depth_chroma_minus8 = self.bit_depth_chroma_minus8
 
-        yield raw_avc1
+        yield raw_avc1[0]
 
 
 @dataclass
@@ -183,24 +177,23 @@ class Mp4SampleEntryHev1:
     temporal_id_nested: int = 0
 
     @staticmethod
-    def _from_raw(raw_hev1: _RawMp4SampleEntryHev1) -> "Mp4SampleEntryHev1":
+    def _from_raw(raw_hev1: Any) -> "Mp4SampleEntryHev1":
         # NALU types を抽出
         nalu_types = []
-        if raw_hev1.nalu_array_count > 0 and raw_hev1.nalu_types:
+        if raw_hev1.nalu_array_count > 0 and raw_hev1.nalu_types != ffi.NULL:
             for i in range(raw_hev1.nalu_array_count):
                 nalu_types.append(raw_hev1.nalu_types[i])
 
         # NALU data を抽出
         nalu_data = []
-        if raw_hev1.nalu_sizes and raw_hev1.nalu_data:
+        if raw_hev1.nalu_sizes != ffi.NULL and raw_hev1.nalu_data != ffi.NULL:
             # nalu_counts から各タイプのNALUサンプル数を取得
             offset = 0
             for i in range(raw_hev1.nalu_array_count):
-                count = raw_hev1.nalu_counts[i] if raw_hev1.nalu_counts else 0
+                count = raw_hev1.nalu_counts[i] if raw_hev1.nalu_counts != ffi.NULL else 0
                 for j in range(count):
                     size = raw_hev1.nalu_sizes[offset + j]
-                    # 実装上、データは連続していると仮定
-                    data = bytes(raw_hev1.nalu_data[offset + j : offset + j + size])
+                    data = bytes(ffi.buffer(raw_hev1.nalu_data[offset + j], size))
                     nalu_data.append(data)
                 offset += count
 
@@ -228,7 +221,7 @@ class Mp4SampleEntryHev1:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryHev1, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
 
         # nalu_types と nalu_data の長さが等しいことをチェックする
@@ -238,31 +231,29 @@ class Mp4SampleEntryHev1:
                 f"nalu_types: {len(self.nalu_types)}, nalu_data: {len(self.nalu_data)}"
             )
 
-        nalu_types_array = (ctypes.c_uint8 * len(self.nalu_types))(*self.nalu_types)
+        nalu_types_array = ffi.new("uint8_t[]", self.nalu_types)
 
         # NALU サイズ配列を作成
-        nalu_sizes = (ctypes.c_uint32 * len(self.nalu_data))()
+        nalu_sizes = ffi.new("uint32_t[]", len(self.nalu_data))
         for i, data in enumerate(self.nalu_data):
             nalu_sizes[i] = len(data)
 
         # nalu_counts: 各 NALU タイプごとのユニット数
         # 現在の実装では、各タイプごとに 1 つのユニットを想定
-        nalu_counts = (ctypes.c_uint32 * len(self.nalu_types))()
+        nalu_counts = ffi.new("uint32_t[]", len(self.nalu_types))
         for i in range(len(self.nalu_types)):
             nalu_counts[i] = 1
 
         # 各 NALU データ用のバッファを作成（メモリ保持用）
         nalu_data_buffers = []
-        nalu_data_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.nalu_data))()
+        nalu_data_pointers = ffi.new("uint8_t*[]", len(self.nalu_data))
 
         for i, data in enumerate(self.nalu_data):
-            # バッファを作成して保持
-            buf = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
+            buf = ffi.new("uint8_t[]", data)
             nalu_data_buffers.append(buf)
-            # ポインタの配列に登録
-            nalu_data_pointers[i] = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint8))
+            nalu_data_pointers[i] = buf
 
-        raw_hev1 = _RawMp4SampleEntryHev1()
+        raw_hev1 = ffi.new("Mp4SampleEntryHev1*")
         raw_hev1.width = self.width
         raw_hev1.height = self.height
         raw_hev1.general_profile_space = self.general_profile_space
@@ -282,12 +273,12 @@ class Mp4SampleEntryHev1:
         raw_hev1.temporal_id_nested = self.temporal_id_nested
         raw_hev1.length_size_minus_one = self.length_size_minus_one
         raw_hev1.nalu_array_count = len(self.nalu_types)
-        raw_hev1.nalu_types = ctypes.cast(nalu_types_array, ctypes.POINTER(ctypes.c_uint8))
-        raw_hev1.nalu_counts = ctypes.cast(nalu_counts, ctypes.POINTER(ctypes.c_uint32))
-        raw_hev1.nalu_data = ctypes.cast(nalu_data_pointers, ctypes.POINTER(ctypes.c_uint8))
+        raw_hev1.nalu_types = nalu_types_array
+        raw_hev1.nalu_counts = nalu_counts
+        raw_hev1.nalu_data = nalu_data_pointers
         raw_hev1.nalu_sizes = nalu_sizes
 
-        yield raw_hev1
+        yield raw_hev1[0]
 
 
 @dataclass
@@ -306,7 +297,7 @@ class Mp4SampleEntryVp08:
     matrix_coefficients: int = 1
 
     @staticmethod
-    def _from_raw(raw_vp08: _RawMp4SampleEntryVp08) -> "Mp4SampleEntryVp08":
+    def _from_raw(raw_vp08: Any) -> "Mp4SampleEntryVp08":
         return Mp4SampleEntryVp08(
             width=raw_vp08.width,
             height=raw_vp08.height,
@@ -319,9 +310,9 @@ class Mp4SampleEntryVp08:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryVp08, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_vp08 = _RawMp4SampleEntryVp08()
+        raw_vp08 = ffi.new("Mp4SampleEntryVp08*")
         raw_vp08.width = self.width
         raw_vp08.height = self.height
         raw_vp08.bit_depth = self.bit_depth
@@ -331,7 +322,7 @@ class Mp4SampleEntryVp08:
         raw_vp08.transfer_characteristics = self.transfer_characteristics
         raw_vp08.matrix_coefficients = self.matrix_coefficients
 
-        yield raw_vp08
+        yield raw_vp08[0]
 
 
 @dataclass
@@ -352,7 +343,7 @@ class Mp4SampleEntryVp09:
     matrix_coefficients: int = 1
 
     @staticmethod
-    def _from_raw(raw_vp09: _RawMp4SampleEntryVp09) -> "Mp4SampleEntryVp09":
+    def _from_raw(raw_vp09: Any) -> "Mp4SampleEntryVp09":
         return Mp4SampleEntryVp09(
             width=raw_vp09.width,
             height=raw_vp09.height,
@@ -367,9 +358,9 @@ class Mp4SampleEntryVp09:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryVp09, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_vp09 = _RawMp4SampleEntryVp09()
+        raw_vp09 = ffi.new("Mp4SampleEntryVp09*")
         raw_vp09.width = self.width
         raw_vp09.height = self.height
         raw_vp09.profile = self.profile
@@ -381,7 +372,7 @@ class Mp4SampleEntryVp09:
         raw_vp09.transfer_characteristics = self.transfer_characteristics
         raw_vp09.matrix_coefficients = self.matrix_coefficients
 
-        yield raw_vp09
+        yield raw_vp09[0]
 
 
 @dataclass
@@ -406,7 +397,11 @@ class Mp4SampleEntryAv01:
     initial_presentation_delay_minus_one: int = 0
 
     @staticmethod
-    def _from_raw(raw_av01: _RawMp4SampleEntryAv01) -> "Mp4SampleEntryAv01":
+    def _from_raw(raw_av01: Any) -> "Mp4SampleEntryAv01":
+        config_obus = b""
+        if raw_av01.config_obus != ffi.NULL and raw_av01.config_obus_size > 0:
+            config_obus = bytes(ffi.buffer(raw_av01.config_obus, raw_av01.config_obus_size))
+
         return Mp4SampleEntryAv01(
             width=raw_av01.width,
             height=raw_av01.height,
@@ -421,18 +416,16 @@ class Mp4SampleEntryAv01:
             chroma_sample_position=raw_av01.chroma_sample_position,
             initial_presentation_delay_present=raw_av01.initial_presentation_delay_present,
             initial_presentation_delay_minus_one=raw_av01.initial_presentation_delay_minus_one,
-            config_obus=bytes(raw_av01.config_obus[: raw_av01.config_obus_size]),
+            config_obus=config_obus,
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryAv01, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        config_obus_array = (ctypes.c_uint8 * len(self.config_obus)).from_buffer_copy(
-            self.config_obus
-        )
+        config_obus_array = ffi.new("uint8_t[]", self.config_obus)
         config_obus_size = len(self.config_obus)
 
-        raw_av01 = _RawMp4SampleEntryAv01()
+        raw_av01 = ffi.new("Mp4SampleEntryAv01*")
         raw_av01.width = self.width
         raw_av01.height = self.height
         raw_av01.seq_profile = self.seq_profile
@@ -446,10 +439,10 @@ class Mp4SampleEntryAv01:
         raw_av01.chroma_sample_position = self.chroma_sample_position
         raw_av01.initial_presentation_delay_present = self.initial_presentation_delay_present
         raw_av01.initial_presentation_delay_minus_one = self.initial_presentation_delay_minus_one
-        raw_av01.config_obus = ctypes.cast(config_obus_array, ctypes.POINTER(ctypes.c_uint8))
+        raw_av01.config_obus = config_obus_array
         raw_av01.config_obus_size = config_obus_size
 
-        yield raw_av01
+        yield raw_av01[0]
 
 
 @dataclass
@@ -466,7 +459,7 @@ class Mp4SampleEntryOpus:
     output_gain: int = 0
 
     @staticmethod
-    def _from_raw(raw_opus: _RawMp4SampleEntryOpus) -> "Mp4SampleEntryOpus":
+    def _from_raw(raw_opus: Any) -> "Mp4SampleEntryOpus":
         return Mp4SampleEntryOpus(
             channel_count=raw_opus.channel_count,
             sample_rate=raw_opus.sample_rate,
@@ -477,9 +470,9 @@ class Mp4SampleEntryOpus:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryOpus, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_opus = _RawMp4SampleEntryOpus()
+        raw_opus = ffi.new("Mp4SampleEntryOpus*")
         raw_opus.channel_count = self.channel_count
         raw_opus.sample_rate = self.sample_rate
         raw_opus.sample_size = self.sample_size
@@ -489,7 +482,7 @@ class Mp4SampleEntryOpus:
         )
         raw_opus.output_gain = self.output_gain
 
-        yield raw_opus
+        yield raw_opus[0]
 
 
 @dataclass
@@ -507,8 +500,10 @@ class Mp4SampleEntryMp4a:
     avg_bitrate: int = 0
 
     @staticmethod
-    def _from_raw(raw_mp4a: _RawMp4SampleEntryMp4a) -> "Mp4SampleEntryMp4a":
-        dec_specific_info = bytes(raw_mp4a.dec_specific_info[: raw_mp4a.dec_specific_info_size])
+    def _from_raw(raw_mp4a: Any) -> "Mp4SampleEntryMp4a":
+        dec_specific_info = b""
+        if raw_mp4a.dec_specific_info != ffi.NULL and raw_mp4a.dec_specific_info_size > 0:
+            dec_specific_info = bytes(ffi.buffer(raw_mp4a.dec_specific_info, raw_mp4a.dec_specific_info_size))
 
         return Mp4SampleEntryMp4a(
             channel_count=raw_mp4a.channel_count,
@@ -521,26 +516,22 @@ class Mp4SampleEntryMp4a:
         )
 
     @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryMp4a, None, None]:
+    def _to_raw(self) -> Generator[Any, None, None]:
         # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        dec_specific_info_array = (ctypes.c_uint8 * len(self.dec_specific_info)).from_buffer_copy(
-            self.dec_specific_info
-        )
+        dec_specific_info_array = ffi.new("uint8_t[]", self.dec_specific_info)
         dec_specific_info_size = len(self.dec_specific_info)
 
-        raw_mp4a = _RawMp4SampleEntryMp4a()
+        raw_mp4a = ffi.new("Mp4SampleEntryMp4a*")
         raw_mp4a.channel_count = self.channel_count
         raw_mp4a.sample_rate = self.sample_rate
         raw_mp4a.sample_size = self.sample_size
         raw_mp4a.buffer_size_db = self.buffer_size_db
         raw_mp4a.max_bitrate = self.max_bitrate
         raw_mp4a.avg_bitrate = self.avg_bitrate
-        raw_mp4a.dec_specific_info = ctypes.cast(
-            dec_specific_info_array, ctypes.POINTER(ctypes.c_uint8)
-        )
+        raw_mp4a.dec_specific_info = dec_specific_info_array
         raw_mp4a.dec_specific_info_size = dec_specific_info_size
 
-        yield raw_mp4a
+        yield raw_mp4a[0]
 
 
 Mp4SampleEntry = (
@@ -557,65 +548,65 @@ MP4 サンプルエントリー
 """
 
 
-def _from_raw_mp4_sample_entry(raw_entry: _RawMp4SampleEntry) -> Mp4SampleEntry:
-    kind = _RawMp4SampleEntryKind(raw_entry.kind)
+def _from_raw_mp4_sample_entry(raw_entry: Any) -> Mp4SampleEntry:
+    kind = Mp4SampleEntryKind(raw_entry.kind)
 
-    if kind == _RawMp4SampleEntryKind.AVC1:
+    if kind == Mp4SampleEntryKind.AVC1:
         return Mp4SampleEntryAvc1._from_raw(raw_entry.data.avc1)
-    elif kind == _RawMp4SampleEntryKind.HEV1:
+    elif kind == Mp4SampleEntryKind.HEV1:
         return Mp4SampleEntryHev1._from_raw(raw_entry.data.hev1)
-    elif kind == _RawMp4SampleEntryKind.VP08:
+    elif kind == Mp4SampleEntryKind.VP08:
         return Mp4SampleEntryVp08._from_raw(raw_entry.data.vp08)
-    elif kind == _RawMp4SampleEntryKind.VP09:
+    elif kind == Mp4SampleEntryKind.VP09:
         return Mp4SampleEntryVp09._from_raw(raw_entry.data.vp09)
-    elif kind == _RawMp4SampleEntryKind.AV01:
+    elif kind == Mp4SampleEntryKind.AV01:
         return Mp4SampleEntryAv01._from_raw(raw_entry.data.av01)
-    elif kind == _RawMp4SampleEntryKind.OPUS:
+    elif kind == Mp4SampleEntryKind.OPUS:
         return Mp4SampleEntryOpus._from_raw(raw_entry.data.opus)
-    elif kind == _RawMp4SampleEntryKind.MP4A:
+    elif kind == Mp4SampleEntryKind.MP4A:
         return Mp4SampleEntryMp4a._from_raw(raw_entry.data.mp4a)
     else:
         raise ValueError(f"Unsupported sample entry kind: {kind}")
 
 
 @contextmanager
-def _to_raw_mp4_sample_entry(entry: Mp4SampleEntry) -> Generator[_RawMp4SampleEntry, None, None]:
-    raw_entry = _RawMp4SampleEntry()
+def _to_raw_mp4_sample_entry(entry: Mp4SampleEntry) -> Generator[Any, None, None]:
+    raw_entry = ffi.new("Mp4SampleEntry*")
 
     if isinstance(entry, Mp4SampleEntryAvc1):
-        raw_entry.kind = _RawMp4SampleEntryKind.AVC1
+        raw_entry.kind = Mp4SampleEntryKind.AVC1
         with entry._to_raw() as raw_avc1:
             raw_entry.data.avc1 = raw_avc1
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryHev1):
-        raw_entry.kind = _RawMp4SampleEntryKind.HEV1
+        raw_entry.kind = Mp4SampleEntryKind.HEV1
         with entry._to_raw() as raw_hev1:
             raw_entry.data.hev1 = raw_hev1
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryVp08):
-        raw_entry.kind = _RawMp4SampleEntryKind.VP08
+        raw_entry.kind = Mp4SampleEntryKind.VP08
         with entry._to_raw() as raw_vp08:
             raw_entry.data.vp08 = raw_vp08
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryVp09):
-        raw_entry.kind = _RawMp4SampleEntryKind.VP09
+        raw_entry.kind = Mp4SampleEntryKind.VP09
         with entry._to_raw() as raw_vp09:
             raw_entry.data.vp09 = raw_vp09
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryAv01):
-        raw_entry.kind = _RawMp4SampleEntryKind.AV01
+        raw_entry.kind = Mp4SampleEntryKind.AV01
         with entry._to_raw() as raw_av01:
             raw_entry.data.av01 = raw_av01
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryOpus):
-        raw_entry.kind = _RawMp4SampleEntryKind.OPUS
+        raw_entry.kind = Mp4SampleEntryKind.OPUS
         with entry._to_raw() as raw_opus:
             raw_entry.data.opus = raw_opus
-            yield raw_entry
+            yield raw_entry[0]
     elif isinstance(entry, Mp4SampleEntryMp4a):
-        raw_entry.kind = _RawMp4SampleEntryKind.MP4A
+        raw_entry.kind = Mp4SampleEntryKind.MP4A
         with entry._to_raw() as raw_mp4a:
             raw_entry.data.mp4a = raw_mp4a
-            yield raw_entry
+            yield raw_entry[0]
     else:
         raise ValueError(f"Unsupported sample entry type: {type(entry).__name__}")

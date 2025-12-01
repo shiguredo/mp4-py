@@ -3,7 +3,7 @@
 from importlib.metadata import version
 
 from mp4._types import (
-    Mp4TrackKind,
+    Mp4TrackKindLiteral as Mp4TrackKind,
     Mp4SampleEntryAvc1,
     Mp4SampleEntryHev1,
     Mp4SampleEntryVp08,
@@ -29,9 +29,9 @@ __version__ = version("mp4-py")
 
 def native_version() -> str:
     """mp4-rust のバージョンを返す"""
-    from mp4._c_api import _get_lib
+    from mp4._c_api import _get_lib, ffi
 
-    return _get_lib().mp4_library_version().decode("utf-8")
+    return ffi.string(_get_lib().mp4_library_version()).decode("utf-8")
 
 
 __all__ = [

@@ -3,20 +3,276 @@
 # それぞれの関数やクラスの詳細は大元の mp4.h のコメントを参照のこと（メンテナンスの手間を軽減するために、このファイル内にはコメントは記載しない）
 #
 # NOTE:
-# - ここで提供するクラスには _Raw プレフィックスが付与される
 # - ここで定義されている関数やクラスは利用者からは隠蔽する想定（直接公開はしない）
-import ctypes
 from enum import IntEnum
 from pathlib import Path
 from typing import Optional
 
+from cffi import FFI
 
-class _RawMp4TrackKind(IntEnum):
+# cffi の FFI インスタンスを作成
+ffi = FFI()
+
+# mp4.h の C 宣言を定義
+ffi.cdef("""
+    // エラーコード
+    typedef enum Mp4Error {
+        MP4_ERROR_OK = 0,
+        MP4_ERROR_INVALID_INPUT,
+        MP4_ERROR_INVALID_DATA,
+        MP4_ERROR_INVALID_STATE,
+        MP4_ERROR_INPUT_REQUIRED,
+        MP4_ERROR_OUTPUT_REQUIRED,
+        MP4_ERROR_NULL_POINTER,
+        MP4_ERROR_NO_MORE_SAMPLES,
+        MP4_ERROR_UNSUPPORTED,
+        MP4_ERROR_OTHER,
+    } Mp4Error;
+
+    // トラック種別
+    typedef enum Mp4TrackKind {
+        MP4_TRACK_KIND_AUDIO = 0,
+        MP4_TRACK_KIND_VIDEO = 1,
+    } Mp4TrackKind;
+
+    // サンプルエントリー種別
+    typedef enum Mp4SampleEntryKind {
+        MP4_SAMPLE_ENTRY_KIND_AVC1,
+        MP4_SAMPLE_ENTRY_KIND_HEV1,
+        MP4_SAMPLE_ENTRY_KIND_VP08,
+        MP4_SAMPLE_ENTRY_KIND_VP09,
+        MP4_SAMPLE_ENTRY_KIND_AV01,
+        MP4_SAMPLE_ENTRY_KIND_OPUS,
+        MP4_SAMPLE_ENTRY_KIND_MP4A,
+    } Mp4SampleEntryKind;
+
+    // Demuxer 構造体（不透明型）
+    typedef struct Mp4FileDemuxer {
+        uint8_t _private[0];
+    } Mp4FileDemuxer;
+
+    // トラック情報
+    typedef struct Mp4DemuxTrackInfo {
+        uint32_t track_id;
+        Mp4TrackKind kind;
+        uint64_t duration;
+        uint32_t timescale;
+    } Mp4DemuxTrackInfo;
+
+    // AVC1 サンプルエントリー
+    typedef struct Mp4SampleEntryAvc1 {
+        uint16_t width;
+        uint16_t height;
+        uint8_t avc_profile_indication;
+        uint8_t profile_compatibility;
+        uint8_t avc_level_indication;
+        uint8_t length_size_minus_one;
+        const uint8_t *const *sps_data;
+        const uint32_t *sps_sizes;
+        uint32_t sps_count;
+        const uint8_t *const *pps_data;
+        const uint32_t *pps_sizes;
+        uint32_t pps_count;
+        bool is_chroma_format_present;
+        uint8_t chroma_format;
+        bool is_bit_depth_luma_minus8_present;
+        uint8_t bit_depth_luma_minus8;
+        bool is_bit_depth_chroma_minus8_present;
+        uint8_t bit_depth_chroma_minus8;
+    } Mp4SampleEntryAvc1;
+
+    // HEV1 サンプルエントリー
+    typedef struct Mp4SampleEntryHev1 {
+        uint16_t width;
+        uint16_t height;
+        uint8_t general_profile_space;
+        uint8_t general_tier_flag;
+        uint8_t general_profile_idc;
+        uint32_t general_profile_compatibility_flags;
+        uint64_t general_constraint_indicator_flags;
+        uint8_t general_level_idc;
+        uint8_t chroma_format_idc;
+        uint8_t bit_depth_luma_minus8;
+        uint8_t bit_depth_chroma_minus8;
+        uint16_t min_spatial_segmentation_idc;
+        uint8_t parallelism_type;
+        uint16_t avg_frame_rate;
+        uint8_t constant_frame_rate;
+        uint8_t num_temporal_layers;
+        uint8_t temporal_id_nested;
+        uint8_t length_size_minus_one;
+        uint32_t nalu_array_count;
+        const uint8_t *nalu_types;
+        const uint32_t *nalu_counts;
+        const uint8_t *const *nalu_data;
+        const uint32_t *nalu_sizes;
+    } Mp4SampleEntryHev1;
+
+    // VP08 サンプルエントリー
+    typedef struct Mp4SampleEntryVp08 {
+        uint16_t width;
+        uint16_t height;
+        uint8_t bit_depth;
+        uint8_t chroma_subsampling;
+        bool video_full_range_flag;
+        uint8_t colour_primaries;
+        uint8_t transfer_characteristics;
+        uint8_t matrix_coefficients;
+    } Mp4SampleEntryVp08;
+
+    // VP09 サンプルエントリー
+    typedef struct Mp4SampleEntryVp09 {
+        uint16_t width;
+        uint16_t height;
+        uint8_t profile;
+        uint8_t level;
+        uint8_t bit_depth;
+        uint8_t chroma_subsampling;
+        bool video_full_range_flag;
+        uint8_t colour_primaries;
+        uint8_t transfer_characteristics;
+        uint8_t matrix_coefficients;
+    } Mp4SampleEntryVp09;
+
+    // AV01 サンプルエントリー
+    typedef struct Mp4SampleEntryAv01 {
+        uint16_t width;
+        uint16_t height;
+        uint8_t seq_profile;
+        uint8_t seq_level_idx_0;
+        uint8_t seq_tier_0;
+        uint8_t high_bitdepth;
+        uint8_t twelve_bit;
+        uint8_t monochrome;
+        uint8_t chroma_subsampling_x;
+        uint8_t chroma_subsampling_y;
+        uint8_t chroma_sample_position;
+        bool initial_presentation_delay_present;
+        uint8_t initial_presentation_delay_minus_one;
+        const uint8_t *config_obus;
+        uint32_t config_obus_size;
+    } Mp4SampleEntryAv01;
+
+    // Opus サンプルエントリー
+    typedef struct Mp4SampleEntryOpus {
+        uint8_t channel_count;
+        uint16_t sample_rate;
+        uint16_t sample_size;
+        uint16_t pre_skip;
+        uint32_t input_sample_rate;
+        int16_t output_gain;
+    } Mp4SampleEntryOpus;
+
+    // MP4A サンプルエントリー
+    typedef struct Mp4SampleEntryMp4a {
+        uint8_t channel_count;
+        uint16_t sample_rate;
+        uint16_t sample_size;
+        uint32_t buffer_size_db;
+        uint32_t max_bitrate;
+        uint32_t avg_bitrate;
+        const uint8_t *dec_specific_info;
+        uint32_t dec_specific_info_size;
+    } Mp4SampleEntryMp4a;
+
+    // サンプルエントリーデータのユニオン
+    typedef union Mp4SampleEntryData {
+        Mp4SampleEntryAvc1 avc1;
+        Mp4SampleEntryHev1 hev1;
+        Mp4SampleEntryVp08 vp08;
+        Mp4SampleEntryVp09 vp09;
+        Mp4SampleEntryAv01 av01;
+        Mp4SampleEntryOpus opus;
+        Mp4SampleEntryMp4a mp4a;
+    } Mp4SampleEntryData;
+
+    // サンプルエントリー
+    typedef struct Mp4SampleEntry {
+        Mp4SampleEntryKind kind;
+        Mp4SampleEntryData data;
+    } Mp4SampleEntry;
+
+    // デマルチプレックスサンプル
+    typedef struct Mp4DemuxSample {
+        const Mp4DemuxTrackInfo *track;
+        const Mp4SampleEntry *sample_entry;
+        bool keyframe;
+        uint64_t timestamp;
+        uint32_t duration;
+        uint64_t data_offset;
+        uintptr_t data_size;
+    } Mp4DemuxSample;
+
+    // Muxer 構造体（不透明型）
+    typedef struct Mp4FileMuxer {
+        uint8_t _private[0];
+    } Mp4FileMuxer;
+
+    // マルチプレックスサンプル
+    typedef struct Mp4MuxSample {
+        Mp4TrackKind track_kind;
+        const Mp4SampleEntry *sample_entry;
+        bool keyframe;
+        uint32_t timescale;
+        uint32_t duration;
+        uint64_t data_offset;
+        uint32_t data_size;
+    } Mp4MuxSample;
+
+    // バージョン情報
+    const char *mp4_library_version(void);
+
+    // Demuxer 関数
+    Mp4FileDemuxer *mp4_file_demuxer_new(void);
+    void mp4_file_demuxer_free(Mp4FileDemuxer *demuxer);
+    const char *mp4_file_demuxer_get_last_error(const Mp4FileDemuxer *demuxer);
+    Mp4Error mp4_file_demuxer_get_required_input(
+        Mp4FileDemuxer *demuxer,
+        uint64_t *out_required_input_position,
+        int32_t *out_required_input_size
+    );
+    Mp4Error mp4_file_demuxer_handle_input(
+        Mp4FileDemuxer *demuxer,
+        uint64_t input_position,
+        const uint8_t *input_data,
+        uint32_t input_data_size
+    );
+    Mp4Error mp4_file_demuxer_get_tracks(
+        Mp4FileDemuxer *demuxer,
+        const Mp4DemuxTrackInfo **out_tracks,
+        uint32_t *out_track_count
+    );
+    Mp4Error mp4_file_demuxer_next_sample(
+        Mp4FileDemuxer *demuxer,
+        Mp4DemuxSample *out_sample
+    );
+
+    // Muxer 関数
+    Mp4FileMuxer *mp4_file_muxer_new(void);
+    void mp4_file_muxer_free(Mp4FileMuxer *muxer);
+    const char *mp4_file_muxer_get_last_error(const Mp4FileMuxer *muxer);
+    Mp4Error mp4_file_muxer_set_reserved_moov_box_size(Mp4FileMuxer *muxer, uint64_t size);
+    Mp4Error mp4_file_muxer_initialize(Mp4FileMuxer *muxer);
+    Mp4Error mp4_file_muxer_next_output(
+        Mp4FileMuxer *muxer,
+        uint64_t *out_output_offset,
+        uint32_t *out_output_size,
+        const uint8_t **out_output_data
+    );
+    Mp4Error mp4_file_muxer_append_sample(Mp4FileMuxer *muxer, const Mp4MuxSample *sample);
+    Mp4Error mp4_file_muxer_finalize(Mp4FileMuxer *muxer);
+
+    // ユーティリティ関数
+    uint32_t mp4_estimate_maximum_moov_box_size(uint32_t audio_sample_count, uint32_t video_sample_count);
+""")
+
+
+class Mp4TrackKind(IntEnum):
     AUDIO = 0
     VIDEO = 1
 
 
-class _RawMp4SampleEntryKind(IntEnum):
+class Mp4SampleEntryKind(IntEnum):
     AVC1 = 0
     HEV1 = 1
     VP08 = 2
@@ -26,7 +282,7 @@ class _RawMp4SampleEntryKind(IntEnum):
     MP4A = 6
 
 
-class _RawMp4Error(IntEnum):
+class Mp4Error(IntEnum):
     OK = 0
     INVALID_INPUT = 1
     INVALID_DATA = 2
@@ -39,190 +295,8 @@ class _RawMp4Error(IntEnum):
     OTHER = 9
 
 
-class _RawMp4DemuxTrackInfo(ctypes.Structure):
-    _fields_ = [
-        ("track_id", ctypes.c_uint32),
-        ("kind", ctypes.c_uint32),
-        ("duration", ctypes.c_uint64),
-        ("timescale", ctypes.c_uint32),
-    ]
-
-
-class _RawMp4SampleEntryAvc1(ctypes.Structure):
-    _fields_ = [
-        ("width", ctypes.c_uint16),
-        ("height", ctypes.c_uint16),
-        ("avc_profile_indication", ctypes.c_uint8),
-        ("profile_compatibility", ctypes.c_uint8),
-        ("avc_level_indication", ctypes.c_uint8),
-        ("length_size_minus_one", ctypes.c_uint8),
-        ("sps_data", ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8))),
-        ("sps_sizes", ctypes.POINTER(ctypes.c_uint32)),
-        ("sps_count", ctypes.c_uint32),
-        ("pps_data", ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8))),
-        ("pps_sizes", ctypes.POINTER(ctypes.c_uint32)),
-        ("pps_count", ctypes.c_uint32),
-        ("is_chroma_format_present", ctypes.c_bool),
-        ("chroma_format", ctypes.c_uint8),
-        ("is_bit_depth_luma_minus8_present", ctypes.c_bool),
-        ("bit_depth_luma_minus8", ctypes.c_uint8),
-        ("is_bit_depth_chroma_minus8_present", ctypes.c_bool),
-        ("bit_depth_chroma_minus8", ctypes.c_uint8),
-    ]
-
-
-class _RawMp4SampleEntryHev1(ctypes.Structure):
-    _fields_ = [
-        ("width", ctypes.c_uint16),
-        ("height", ctypes.c_uint16),
-        ("general_profile_space", ctypes.c_uint8),
-        ("general_tier_flag", ctypes.c_uint8),
-        ("general_profile_idc", ctypes.c_uint8),
-        ("general_profile_compatibility_flags", ctypes.c_uint32),
-        ("general_constraint_indicator_flags", ctypes.c_uint64),
-        ("general_level_idc", ctypes.c_uint8),
-        ("chroma_format_idc", ctypes.c_uint8),
-        ("bit_depth_luma_minus8", ctypes.c_uint8),
-        ("bit_depth_chroma_minus8", ctypes.c_uint8),
-        ("min_spatial_segmentation_idc", ctypes.c_uint16),
-        ("parallelism_type", ctypes.c_uint8),
-        ("avg_frame_rate", ctypes.c_uint16),
-        ("constant_frame_rate", ctypes.c_uint8),
-        ("num_temporal_layers", ctypes.c_uint8),
-        ("temporal_id_nested", ctypes.c_uint8),
-        ("length_size_minus_one", ctypes.c_uint8),
-        ("nalu_array_count", ctypes.c_uint32),
-        ("nalu_types", ctypes.POINTER(ctypes.c_uint8)),
-        ("nalu_counts", ctypes.POINTER(ctypes.c_uint32)),
-        ("nalu_data", ctypes.POINTER(ctypes.c_uint8)),
-        ("nalu_sizes", ctypes.POINTER(ctypes.c_uint32)),
-    ]
-
-
-class _RawMp4SampleEntryVp08(ctypes.Structure):
-    _fields_ = [
-        ("width", ctypes.c_uint16),
-        ("height", ctypes.c_uint16),
-        ("bit_depth", ctypes.c_uint8),
-        ("chroma_subsampling", ctypes.c_uint8),
-        ("video_full_range_flag", ctypes.c_bool),
-        ("colour_primaries", ctypes.c_uint8),
-        ("transfer_characteristics", ctypes.c_uint8),
-        ("matrix_coefficients", ctypes.c_uint8),
-    ]
-
-
-class _RawMp4SampleEntryVp09(ctypes.Structure):
-    _fields_ = [
-        ("width", ctypes.c_uint16),
-        ("height", ctypes.c_uint16),
-        ("profile", ctypes.c_uint8),
-        ("level", ctypes.c_uint8),
-        ("bit_depth", ctypes.c_uint8),
-        ("chroma_subsampling", ctypes.c_uint8),
-        ("video_full_range_flag", ctypes.c_bool),
-        ("colour_primaries", ctypes.c_uint8),
-        ("transfer_characteristics", ctypes.c_uint8),
-        ("matrix_coefficients", ctypes.c_uint8),
-    ]
-
-
-class _RawMp4SampleEntryAv01(ctypes.Structure):
-    _fields_ = [
-        ("width", ctypes.c_uint16),
-        ("height", ctypes.c_uint16),
-        ("seq_profile", ctypes.c_uint8),
-        ("seq_level_idx_0", ctypes.c_uint8),
-        ("seq_tier_0", ctypes.c_uint8),
-        ("high_bitdepth", ctypes.c_uint8),
-        ("twelve_bit", ctypes.c_uint8),
-        ("monochrome", ctypes.c_uint8),
-        ("chroma_subsampling_x", ctypes.c_uint8),
-        ("chroma_subsampling_y", ctypes.c_uint8),
-        ("chroma_sample_position", ctypes.c_uint8),
-        ("initial_presentation_delay_present", ctypes.c_bool),
-        ("initial_presentation_delay_minus_one", ctypes.c_uint8),
-        ("config_obus", ctypes.POINTER(ctypes.c_uint8)),
-        ("config_obus_size", ctypes.c_uint32),
-    ]
-
-
-class _RawMp4SampleEntryOpus(ctypes.Structure):
-    _fields_ = [
-        ("channel_count", ctypes.c_uint8),
-        ("sample_rate", ctypes.c_uint16),
-        ("sample_size", ctypes.c_uint16),
-        ("pre_skip", ctypes.c_uint16),
-        ("input_sample_rate", ctypes.c_uint32),
-        ("output_gain", ctypes.c_int16),
-    ]
-
-
-class _RawMp4SampleEntryMp4a(ctypes.Structure):
-    _fields_ = [
-        ("channel_count", ctypes.c_uint8),
-        ("sample_rate", ctypes.c_uint16),
-        ("sample_size", ctypes.c_uint16),
-        ("buffer_size_db", ctypes.c_uint32),
-        ("max_bitrate", ctypes.c_uint32),
-        ("avg_bitrate", ctypes.c_uint32),
-        ("dec_specific_info", ctypes.POINTER(ctypes.c_uint8)),
-        ("dec_specific_info_size", ctypes.c_uint32),
-    ]
-
-
-class _RawMp4SampleEntryData(ctypes.Union):
-    _fields_ = [
-        ("avc1", _RawMp4SampleEntryAvc1),
-        ("hev1", _RawMp4SampleEntryHev1),
-        ("vp08", _RawMp4SampleEntryVp08),
-        ("vp09", _RawMp4SampleEntryVp09),
-        ("av01", _RawMp4SampleEntryAv01),
-        ("opus", _RawMp4SampleEntryOpus),
-        ("mp4a", _RawMp4SampleEntryMp4a),
-    ]
-
-
-class _RawMp4SampleEntry(ctypes.Structure):
-    _fields_ = [
-        ("kind", ctypes.c_uint32),
-        ("data", _RawMp4SampleEntryData),
-    ]
-
-
-class _RawMp4DemuxSample(ctypes.Structure):
-    _fields_ = [
-        ("track", ctypes.POINTER(_RawMp4DemuxTrackInfo)),
-        ("sample_entry", ctypes.POINTER(_RawMp4SampleEntry)),
-        ("keyframe", ctypes.c_bool),
-        ("timestamp", ctypes.c_uint64),
-        ("duration", ctypes.c_uint32),
-        ("data_offset", ctypes.c_uint64),
-        ("data_size", ctypes.c_uint64),
-    ]
-
-
-class _RawMp4MuxSample(ctypes.Structure):
-    _fields_ = [
-        ("track_kind", ctypes.c_uint32),
-        ("sample_entry", ctypes.POINTER(_RawMp4SampleEntry)),
-        ("keyframe", ctypes.c_bool),
-        ("timescale", ctypes.c_uint32),
-        ("duration", ctypes.c_uint32),
-        ("data_offset", ctypes.c_uint64),
-        ("data_size", ctypes.c_uint32),
-    ]
-
-
-class _Mp4FileDemuxer(ctypes.Structure):
-    pass
-
-
-class _Mp4FileMuxer(ctypes.Structure):
-    pass
-
-
-def _load_library() -> ctypes.CDLL:
+def _load_library():
+    """ライブラリを読み込む"""
     lib_names = [
         "libmp4.so",
         "libmp4.dylib",
@@ -235,7 +309,7 @@ def _load_library() -> ctypes.CDLL:
             lib_path = build_lib_dir / lib_name
             if lib_path.exists():
                 try:
-                    return ctypes.CDLL(str(lib_path))
+                    return ffi.dlopen(str(lib_path))
                 except OSError:
                     continue
 
@@ -246,111 +320,19 @@ def _load_library() -> ctypes.CDLL:
             lib_path = package_lib_dir / lib_name
             if lib_path.exists():
                 try:
-                    return ctypes.CDLL(str(lib_path))
+                    return ffi.dlopen(str(lib_path))
                 except OSError:
                     continue
 
     raise RuntimeError("Failed to load mp4 library")
 
 
-_lib: Optional[ctypes.CDLL] = None
+_lib = None
 
 
-def _get_lib() -> ctypes.CDLL:
+def _get_lib():
+    """ライブラリを取得する"""
     global _lib
     if _lib is None:
         _lib = _load_library()
-        _setup_function_signatures(_lib)
     return _lib
-
-
-def _setup_function_signatures(lib: ctypes.CDLL) -> None:
-    # =====================================================================
-    # バージョン情報関数
-    # =====================================================================
-    lib.mp4_library_version.restype = ctypes.c_char_p
-    lib.mp4_library_version.argtypes = []
-
-    # =====================================================================
-    # Demuxer 関数
-    # =====================================================================
-    lib.mp4_file_demuxer_new.restype = ctypes.POINTER(_Mp4FileDemuxer)
-    lib.mp4_file_demuxer_new.argtypes = []
-
-    lib.mp4_file_demuxer_free.restype = None
-    lib.mp4_file_demuxer_free.argtypes = [ctypes.POINTER(_Mp4FileDemuxer)]
-
-    lib.mp4_file_demuxer_get_last_error.restype = ctypes.c_char_p
-    lib.mp4_file_demuxer_get_last_error.argtypes = [ctypes.POINTER(_Mp4FileDemuxer)]
-
-    lib.mp4_file_demuxer_get_required_input.restype = ctypes.c_int32
-    lib.mp4_file_demuxer_get_required_input.argtypes = [
-        ctypes.POINTER(_Mp4FileDemuxer),
-        ctypes.POINTER(ctypes.c_uint64),
-        ctypes.POINTER(ctypes.c_int32),
-    ]
-
-    lib.mp4_file_demuxer_handle_input.restype = ctypes.c_int32
-    lib.mp4_file_demuxer_handle_input.argtypes = [
-        ctypes.POINTER(_Mp4FileDemuxer),
-        ctypes.c_uint64,
-        ctypes.POINTER(ctypes.c_uint8),
-        ctypes.c_uint32,
-    ]
-
-    lib.mp4_file_demuxer_get_tracks.restype = ctypes.c_int32
-    lib.mp4_file_demuxer_get_tracks.argtypes = [
-        ctypes.POINTER(_Mp4FileDemuxer),
-        ctypes.POINTER(ctypes.POINTER(_RawMp4DemuxTrackInfo)),
-        ctypes.POINTER(ctypes.c_uint32),
-    ]
-
-    lib.mp4_file_demuxer_next_sample.restype = ctypes.c_int32
-    lib.mp4_file_demuxer_next_sample.argtypes = [
-        ctypes.POINTER(_Mp4FileDemuxer),
-        ctypes.POINTER(_RawMp4DemuxSample),
-    ]
-
-    # =====================================================================
-    # Muxer 関数
-    # =====================================================================
-    lib.mp4_file_muxer_new.restype = ctypes.POINTER(_Mp4FileMuxer)
-    lib.mp4_file_muxer_new.argtypes = []
-
-    lib.mp4_file_muxer_free.restype = None
-    lib.mp4_file_muxer_free.argtypes = [ctypes.POINTER(_Mp4FileMuxer)]
-
-    lib.mp4_file_muxer_get_last_error.restype = ctypes.c_char_p
-    lib.mp4_file_muxer_get_last_error.argtypes = [ctypes.POINTER(_Mp4FileMuxer)]
-
-    lib.mp4_file_muxer_set_reserved_moov_box_size.restype = ctypes.c_int32
-    lib.mp4_file_muxer_set_reserved_moov_box_size.argtypes = [
-        ctypes.POINTER(_Mp4FileMuxer),
-        ctypes.c_uint64,
-    ]
-
-    lib.mp4_file_muxer_initialize.restype = ctypes.c_int32
-    lib.mp4_file_muxer_initialize.argtypes = [ctypes.POINTER(_Mp4FileMuxer)]
-
-    lib.mp4_file_muxer_next_output.restype = ctypes.c_int32
-    lib.mp4_file_muxer_next_output.argtypes = [
-        ctypes.POINTER(_Mp4FileMuxer),
-        ctypes.POINTER(ctypes.c_uint64),
-        ctypes.POINTER(ctypes.c_uint32),
-        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),
-    ]
-
-    lib.mp4_file_muxer_append_sample.restype = ctypes.c_int32
-    lib.mp4_file_muxer_append_sample.argtypes = [
-        ctypes.POINTER(_Mp4FileMuxer),
-        ctypes.POINTER(_RawMp4MuxSample),
-    ]
-
-    lib.mp4_file_muxer_finalize.restype = ctypes.c_int32
-    lib.mp4_file_muxer_finalize.argtypes = [ctypes.POINTER(_Mp4FileMuxer)]
-
-    lib.mp4_estimate_maximum_moov_box_size.restype = ctypes.c_uint32
-    lib.mp4_estimate_maximum_moov_box_size.argtypes = [
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-    ]

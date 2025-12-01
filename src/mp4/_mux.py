@@ -1,10 +1,9 @@
-import ctypes
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 import io
 
-from mp4._c_api import _get_lib, _RawMp4MuxSample, _RawMp4SampleEntry, _RawMp4Error
-from mp4._types import Mp4TrackKind, _to_raw_mp4_track_kind, _to_raw_mp4_sample_entry
+from mp4._c_api import ffi, _get_lib, Mp4Error
+from mp4._types import Mp4TrackKindLiteral, _to_raw_mp4_track_kind, _to_raw_mp4_sample_entry, Mp4SampleEntry
 
 
 class Mp4FileMuxerOptions:
@@ -20,7 +19,8 @@ class Mp4FileMuxerOptions:
 
     with open("output.mp4", "wb") as fp:
         with Mp4FileMuxer(fp, options) as muxer:
-            # マルチプレックス処理...\n            pass
+            # マルチプレックス処理...
+            pass
     ```
     """
 
@@ -63,8 +63,8 @@ class Mp4MuxSample:
 
     def __init__(
         self,
-        track_kind: Mp4TrackKind,
-        sample_entry: Optional["Mp4SampleEntry"],
+        track_kind: Mp4TrackKindLiteral,
+        sample_entry: Optional[Mp4SampleEntry],
         keyframe: bool,
         timescale: int,
         duration: int,
@@ -174,7 +174,7 @@ class Mp4FileMuxer:
 
         # C API の muxer を作成
         self._raw_muxer = self._lib.mp4_file_muxer_new()
-        if not self._raw_muxer:
+        if self._raw_muxer == ffi.NULL:
             raise RuntimeError("Failed to create mp4 muxer")
 
         # デフォルトオプション
@@ -216,18 +216,18 @@ class Mp4FileMuxer:
             self._output_stream = None
 
     def _check_error(self, error_code: int) -> None:
-        if error_code == _RawMp4Error.OK:
+        if error_code == Mp4Error.OK:
             return
 
-        msg = self._lib.mp4_file_muxer_get_last_error(self._raw_muxer).decode()
+        msg = ffi.string(self._lib.mp4_file_muxer_get_last_error(self._raw_muxer)).decode()
 
-        if error_code == _RawMp4Error.NULL_POINTER:
+        if error_code == Mp4Error.NULL_POINTER:
             raise ValueError(f"Null pointer error: {msg}")
-        elif error_code == _RawMp4Error.INVALID_STATE:
+        elif error_code == Mp4Error.INVALID_STATE:
             raise RuntimeError(f"Invalid state: {msg}")
-        elif error_code == _RawMp4Error.OUTPUT_REQUIRED:
+        elif error_code == Mp4Error.OUTPUT_REQUIRED:
             raise RuntimeError(f"Output required: {msg}")
-        elif error_code == _RawMp4Error.INVALID_INPUT:
+        elif error_code == Mp4Error.INVALID_INPUT:
             raise ValueError(f"Invalid input: {msg}")
         else:
             raise RuntimeError(f"MP4 error ({error_code}): {msg}")
@@ -235,24 +235,24 @@ class Mp4FileMuxer:
     def _flush_output(self) -> None:
         """内部バッファから出力データをストリームに書き込む"""
         while True:
-            output_offset = ctypes.c_uint64()
-            output_size = ctypes.c_uint32()
-            output_data = ctypes.POINTER(ctypes.c_uint8)()
+            output_offset = ffi.new("uint64_t*")
+            output_size = ffi.new("uint32_t*")
+            output_data = ffi.new("uint8_t**")
 
             error = self._lib.mp4_file_muxer_next_output(
                 self._raw_muxer,
-                ctypes.byref(output_offset),
-                ctypes.byref(output_size),
-                ctypes.byref(output_data),
+                output_offset,
+                output_size,
+                output_data,
             )
             self._check_error(error)
 
-            if output_size.value == 0:
+            if output_size[0] == 0:
                 break
 
             # バッファから実際のバイト列を取得
-            data = bytes(output_data[: output_size.value])
-            self._output_stream.seek(output_offset.value)
+            data = bytes(ffi.buffer(output_data[0], output_size[0]))
+            self._output_stream.seek(output_offset[0])
             self._output_stream.write(data)
 
     def append_sample(self, sample: Mp4MuxSample) -> None:
@@ -277,7 +277,7 @@ class Mp4FileMuxer:
         sample_data_size = len(sample.data)
 
         # マルチプレックスサンプル用の C 構造体を作成
-        c_mux_sample = _RawMp4MuxSample()
+        c_mux_sample = ffi.new("Mp4MuxSample*")
         c_mux_sample.track_kind = _to_raw_mp4_track_kind(sample.track_kind)
         c_mux_sample.keyframe = sample.keyframe
         c_mux_sample.timescale = sample.timescale
@@ -288,18 +288,20 @@ class Mp4FileMuxer:
         # サンプルエントリーを変換
         if sample.sample_entry is not None:
             with _to_raw_mp4_sample_entry(sample.sample_entry) as raw_entry:
-                c_mux_sample.sample_entry = ctypes.pointer(raw_entry)
+                raw_entry_ptr = ffi.new("Mp4SampleEntry*")
+                raw_entry_ptr[0] = raw_entry
+                c_mux_sample.sample_entry = raw_entry_ptr
 
                 error = self._lib.mp4_file_muxer_append_sample(
-                    self._raw_muxer, ctypes.byref(c_mux_sample)
+                    self._raw_muxer, c_mux_sample
                 )
                 self._check_error(error)
         else:
             # sample_entry が None の場合は NULL ポインタを設定
-            c_mux_sample.sample_entry = None
+            c_mux_sample.sample_entry = ffi.NULL
 
             error = self._lib.mp4_file_muxer_append_sample(
-                self._raw_muxer, ctypes.byref(c_mux_sample)
+                self._raw_muxer, c_mux_sample
             )
             self._check_error(error)
 

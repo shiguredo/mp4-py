@@ -21,6 +21,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
 ]
 requires-python = ">=3.12"
+dependencies = ["cffi>=1.17"]
 
 [project.urls]
 Source = "https://github.com/shiguredo/mp4-py"
