@@ -27,8 +27,6 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 - macOS 14 arm64
 - Ubuntu 24.04 x86_64
 - Ubuntu 24.04 arm64
-- Ubuntu 22.04 x86_64
-- Ubuntu 22.04 arm64
 
 ### 対応予定プラットフォーム
 
