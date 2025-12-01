@@ -1,7 +1,15 @@
 cmake_minimum_required(VERSION 4.1)
-project(mp4-py)
+project(mp4_py LANGUAGES CXX)
 
 include(ExternalProject)
+find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
+
+# nanobind を検索
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT
+)
+find_package(nanobind CONFIG REQUIRED)
 
 # deps.json からバージョン情報を読み込む
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/deps.json" DEPS_JSON)
@@ -40,6 +48,7 @@ endif()
 set(MP4_SOURCE_DIR "${PROJECT_ROOT}/_source/mp4-rust")
 set(MP4_BUILD_DIR  "${PROJECT_ROOT}/_build/mp4-rust")
 set(MP4_LIB_INSTALL_DIR "${PROJECT_ROOT}/_build/mp4-rust/lib")
+set(MP4_INCLUDE_DIR "${MP4_SOURCE_DIR}/include")
 
 # ディレクトリを作成
 file(MAKE_DIRECTORY ${MP4_LIB_INSTALL_DIR})
@@ -64,10 +73,60 @@ ExternalProject_Add(mp4_rust
     ${MP4_LIB_INSTALL_DIR}/libmp4.dylib
 )
 
-# wheel パッケージにはヘッダとライブラリをコピー
-install(FILES ${MP4_SOURCE_DIR}/include/mp4.h
-  DESTINATION mp4/include
+# nanobind モジュールを作成
+nanobind_add_module(_mp4
+  NB_DOMAIN "mp4"
+  src/mp4_ext.cpp
 )
+
+add_dependencies(_mp4 mp4_rust)
+
+# インクルードディレクトリを設定
+target_include_directories(_mp4 PRIVATE ${MP4_INCLUDE_DIR})
+
+# mp4 ライブラリをリンク
+if(APPLE)
+  set(MP4_LIB "${MP4_LIB_INSTALL_DIR}/libmp4.dylib")
+elseif(UNIX AND NOT APPLE)
+  set(MP4_LIB "${MP4_LIB_INSTALL_DIR}/libmp4.so")
+endif()
+
+target_link_libraries(_mp4 PRIVATE ${MP4_LIB})
+
+# RPATH 設定
+if(APPLE)
+  # libmp4.dylib の install_name を変更
+  add_custom_command(TARGET _mp4 PRE_LINK
+    COMMAND install_name_tool -id "@rpath/libmp4.dylib" "${MP4_LIB}" || true
+    VERBATIM
+  )
+  set_target_properties(_mp4 PROPERTIES
+    BUILD_RPATH "${MP4_LIB_INSTALL_DIR}"
+    INSTALL_RPATH "@loader_path/lib"
+  )
+elseif(UNIX AND NOT APPLE)
+  set_target_properties(_mp4 PROPERTIES
+    BUILD_RPATH "${MP4_LIB_INSTALL_DIR}"
+    INSTALL_RPATH "$ORIGIN/lib"
+  )
+endif()
+
+# 型スタブを自動生成
+nanobind_add_stub(
+  mp4_stub
+  MODULE _mp4
+  OUTPUT __init__.pyi
+  PYTHON_PATH $<TARGET_FILE_DIR:_mp4>
+  DEPENDS _mp4
+  MARKER_FILE py.typed
+)
+
+# nanobind モジュールを wheel パッケージにインストール
+install(TARGETS _mp4 LIBRARY DESTINATION mp4)
+
+# 型スタブファイルをインストール
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/__init__.pyi DESTINATION mp4)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/py.typed DESTINATION mp4)
 
 # 動的ライブラリを wheel パッケージにインストール
 if(APPLE)
@@ -79,4 +138,3 @@ elseif(UNIX AND NOT APPLE)
     DESTINATION mp4/lib
   )
 endif()
-

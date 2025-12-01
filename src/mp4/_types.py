@@ -1,41 +1,23 @@
-# https://github.com/shiguredo/mp4-rust/blob/develop/crates/c-api/include/mp4.h で定義されている構造体などを Python 用に使いやすくラップするためのモジュール
+# mp4-rust の C API に対応する Python 型定義
 #
-# なお、各処理固有の構造体などはそれぞれの専用モジュール（例えば _mux.py）で定義されている
-import ctypes
-from contextlib import contextmanager
+# nanobind で直接バインドされた構造体を Python 向けにラップする
 from dataclasses import dataclass
-from typing import Literal, List, Optional, Generator
+from typing import Literal, List, Optional
 
-from mp4._c_api import (
-    _RawMp4TrackKind,
-    _RawMp4SampleEntry,
-    _RawMp4SampleEntryAvc1,
-    _RawMp4SampleEntryHev1,
-    _RawMp4SampleEntryVp08,
-    _RawMp4SampleEntryVp09,
-    _RawMp4SampleEntryAv01,
-    _RawMp4SampleEntryOpus,
-    _RawMp4SampleEntryMp4a,
-    _RawMp4SampleEntryKind,
+from mp4._mp4 import (
+    SampleEntryAvc1 as _NativeSampleEntryAvc1,
+    SampleEntryHev1 as _NativeSampleEntryHev1,
+    SampleEntryVp08 as _NativeSampleEntryVp08,
+    SampleEntryVp09 as _NativeSampleEntryVp09,
+    SampleEntryAv01 as _NativeSampleEntryAv01,
+    SampleEntryOpus as _NativeSampleEntryOpus,
+    SampleEntryMp4a as _NativeSampleEntryMp4a,
 )
 
 Mp4TrackKind = Literal["audio", "video"]
 """
 MP4 ファイル内のトラックの種類を表す型
 """
-
-
-def _from_raw_mp4_track_kind(raw_kind: _RawMp4TrackKind) -> Mp4TrackKind:
-    if raw_kind == _RawMp4TrackKind.AUDIO:
-        return "audio"
-    elif raw_kind == _RawMp4TrackKind.VIDEO:
-        return "video"
-    else:
-        raise ValueError(f"Unknown track kind: {raw_kind}")
-
-
-def _to_raw_mp4_track_kind(kind: Mp4TrackKind) -> int:
-    return {"audio": 0, "video": 1}[kind]
 
 
 @dataclass
@@ -57,102 +39,39 @@ class Mp4SampleEntryAvc1:
     bit_depth_chroma_minus8: Optional[int] = None
 
     @staticmethod
-    def _from_raw(raw_avc1: _RawMp4SampleEntryAvc1) -> "Mp4SampleEntryAvc1":
-        # SPS データを抽出
-        sps_data = []
-        if raw_avc1.sps_count > 0 and raw_avc1.sps_data and raw_avc1.sps_sizes:
-            for i in range(raw_avc1.sps_count):
-                size = raw_avc1.sps_sizes[i]
-                data = bytes(raw_avc1.sps_data[i][:size])
-                sps_data.append(data)
-
-        # PPS データを抽出
-        pps_data = []
-        if raw_avc1.pps_count > 0 and raw_avc1.pps_data and raw_avc1.pps_sizes:
-            for i in range(raw_avc1.pps_count):
-                size = raw_avc1.pps_sizes[i]
-                data = bytes(raw_avc1.pps_data[i][:size])
-                pps_data.append(data)
-
-        # オプションのクロマ形式情報を抽出
-        chroma_format = raw_avc1.chroma_format if raw_avc1.is_chroma_format_present else None
-        bit_depth_luma_minus8 = (
-            raw_avc1.bit_depth_luma_minus8 if raw_avc1.is_bit_depth_luma_minus8_present else None
-        )
-        bit_depth_chroma_minus8 = (
-            raw_avc1.bit_depth_chroma_minus8
-            if raw_avc1.is_bit_depth_chroma_minus8_present
-            else None
-        )
-
+    def _from_native(native: _NativeSampleEntryAvc1) -> "Mp4SampleEntryAvc1":
         return Mp4SampleEntryAvc1(
-            width=raw_avc1.width,
-            height=raw_avc1.height,
-            avc_profile_indication=raw_avc1.avc_profile_indication,
-            profile_compatibility=raw_avc1.profile_compatibility,
-            avc_level_indication=raw_avc1.avc_level_indication,
-            length_size_minus_one=raw_avc1.length_size_minus_one,
-            sps_data=sps_data,
-            pps_data=pps_data,
-            chroma_format=chroma_format,
-            bit_depth_luma_minus8=bit_depth_luma_minus8,
-            bit_depth_chroma_minus8=bit_depth_chroma_minus8,
+            width=native.width,
+            height=native.height,
+            avc_profile_indication=native.avc_profile_indication,
+            profile_compatibility=native.profile_compatibility,
+            avc_level_indication=native.avc_level_indication,
+            length_size_minus_one=native.length_size_minus_one,
+            sps_data=[bytes(s) for s in native.sps_data],
+            pps_data=[bytes(p) for p in native.pps_data],
+            chroma_format=native.chroma_format,
+            bit_depth_luma_minus8=native.bit_depth_luma_minus8,
+            bit_depth_chroma_minus8=native.bit_depth_chroma_minus8,
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryAvc1, None, None]:
-        # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        sps_arrays = []
-        sps_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.sps_data))()
-        sps_sizes = (ctypes.c_uint32 * len(self.sps_data))()
-
-        for i, sps in enumerate(self.sps_data):
-            sps_array = (ctypes.c_uint8 * len(sps)).from_buffer_copy(sps)
-            sps_arrays.append(sps_array)
-            sps_pointers[i] = ctypes.cast(sps_array, ctypes.POINTER(ctypes.c_uint8))
-            sps_sizes[i] = len(sps)
-
-        # PPS バッファを作成
-        pps_arrays = []
-        pps_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.pps_data))()
-        pps_sizes = (ctypes.c_uint32 * len(self.pps_data))()
-
-        for i, pps in enumerate(self.pps_data):
-            pps_array = (ctypes.c_uint8 * len(pps)).from_buffer_copy(pps)
-            pps_arrays.append(pps_array)
-            pps_pointers[i] = ctypes.cast(pps_array, ctypes.POINTER(ctypes.c_uint8))
-            pps_sizes[i] = len(pps)
-
-        # raw 構造体を構築
-        raw_avc1 = _RawMp4SampleEntryAvc1()
-        raw_avc1.width = self.width
-        raw_avc1.height = self.height
-        raw_avc1.avc_profile_indication = self.avc_profile_indication
-        raw_avc1.profile_compatibility = self.profile_compatibility
-        raw_avc1.avc_level_indication = self.avc_level_indication
-        raw_avc1.length_size_minus_one = self.length_size_minus_one
-        raw_avc1.sps_data = sps_pointers
-        raw_avc1.sps_sizes = sps_sizes
-        raw_avc1.sps_count = len(self.sps_data)
-        raw_avc1.pps_data = pps_pointers
-        raw_avc1.pps_sizes = pps_sizes
-        raw_avc1.pps_count = len(self.pps_data)
-        raw_avc1.is_chroma_format_present = False
-        raw_avc1.is_bit_depth_luma_minus8_present = False
-        raw_avc1.is_bit_depth_chroma_minus8_present = False
-
-        # オプションフィールドを設定
+    def _to_native(self) -> _NativeSampleEntryAvc1:
+        native = _NativeSampleEntryAvc1()
+        native.width = self.width
+        native.height = self.height
+        native.avc_profile_indication = self.avc_profile_indication
+        native.profile_compatibility = self.profile_compatibility
+        native.avc_level_indication = self.avc_level_indication
+        native.length_size_minus_one = self.length_size_minus_one
+        native.sps_data = self.sps_data
+        native.pps_data = self.pps_data
+        # Optional フィールドは None でなければ設定
         if self.chroma_format is not None:
-            raw_avc1.is_chroma_format_present = True
-            raw_avc1.chroma_format = self.chroma_format
+            native.chroma_format = self.chroma_format
         if self.bit_depth_luma_minus8 is not None:
-            raw_avc1.is_bit_depth_luma_minus8_present = True
-            raw_avc1.bit_depth_luma_minus8 = self.bit_depth_luma_minus8
+            native.bit_depth_luma_minus8 = self.bit_depth_luma_minus8
         if self.bit_depth_chroma_minus8 is not None:
-            raw_avc1.is_bit_depth_chroma_minus8_present = True
-            raw_avc1.bit_depth_chroma_minus8 = self.bit_depth_chroma_minus8
-
-        yield raw_avc1
+            native.bit_depth_chroma_minus8 = self.bit_depth_chroma_minus8
+        return native
 
 
 @dataclass
@@ -183,54 +102,31 @@ class Mp4SampleEntryHev1:
     temporal_id_nested: int = 0
 
     @staticmethod
-    def _from_raw(raw_hev1: _RawMp4SampleEntryHev1) -> "Mp4SampleEntryHev1":
-        # NALU types を抽出
-        nalu_types = []
-        if raw_hev1.nalu_array_count > 0 and raw_hev1.nalu_types:
-            for i in range(raw_hev1.nalu_array_count):
-                nalu_types.append(raw_hev1.nalu_types[i])
-
-        # NALU data を抽出
-        nalu_data = []
-        if raw_hev1.nalu_sizes and raw_hev1.nalu_data:
-            # nalu_counts から各タイプのNALUサンプル数を取得
-            offset = 0
-            for i in range(raw_hev1.nalu_array_count):
-                count = raw_hev1.nalu_counts[i] if raw_hev1.nalu_counts else 0
-                for j in range(count):
-                    size = raw_hev1.nalu_sizes[offset + j]
-                    # 実装上、データは連続していると仮定
-                    data = bytes(raw_hev1.nalu_data[offset + j : offset + j + size])
-                    nalu_data.append(data)
-                offset += count
-
+    def _from_native(native: _NativeSampleEntryHev1) -> "Mp4SampleEntryHev1":
         return Mp4SampleEntryHev1(
-            width=raw_hev1.width,
-            height=raw_hev1.height,
-            general_profile_space=raw_hev1.general_profile_space,
-            general_tier_flag=raw_hev1.general_tier_flag,
-            general_profile_idc=raw_hev1.general_profile_idc,
-            general_profile_compatibility_flags=raw_hev1.general_profile_compatibility_flags,
-            general_constraint_indicator_flags=raw_hev1.general_constraint_indicator_flags,
-            general_level_idc=raw_hev1.general_level_idc,
-            chroma_format_idc=raw_hev1.chroma_format_idc,
-            bit_depth_luma_minus8=raw_hev1.bit_depth_luma_minus8,
-            bit_depth_chroma_minus8=raw_hev1.bit_depth_chroma_minus8,
-            min_spatial_segmentation_idc=raw_hev1.min_spatial_segmentation_idc,
-            parallelism_type=raw_hev1.parallelism_type,
-            avg_frame_rate=raw_hev1.avg_frame_rate,
-            constant_frame_rate=raw_hev1.constant_frame_rate,
-            num_temporal_layers=raw_hev1.num_temporal_layers,
-            temporal_id_nested=raw_hev1.temporal_id_nested,
-            length_size_minus_one=raw_hev1.length_size_minus_one,
-            nalu_types=nalu_types,
-            nalu_data=nalu_data,
+            width=native.width,
+            height=native.height,
+            general_profile_space=native.general_profile_space,
+            general_tier_flag=native.general_tier_flag,
+            general_profile_idc=native.general_profile_idc,
+            general_profile_compatibility_flags=native.general_profile_compatibility_flags,
+            general_constraint_indicator_flags=native.general_constraint_indicator_flags,
+            general_level_idc=native.general_level_idc,
+            chroma_format_idc=native.chroma_format_idc,
+            bit_depth_luma_minus8=native.bit_depth_luma_minus8,
+            bit_depth_chroma_minus8=native.bit_depth_chroma_minus8,
+            min_spatial_segmentation_idc=native.min_spatial_segmentation_idc,
+            parallelism_type=native.parallelism_type,
+            avg_frame_rate=native.avg_frame_rate,
+            constant_frame_rate=native.constant_frame_rate,
+            num_temporal_layers=native.num_temporal_layers,
+            temporal_id_nested=native.temporal_id_nested,
+            length_size_minus_one=native.length_size_minus_one,
+            nalu_types=list(native.nalu_types),
+            nalu_data=[bytes(d) for d in native.nalu_data],
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryHev1, None, None]:
-        # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-
+    def _to_native(self) -> _NativeSampleEntryHev1:
         # nalu_types と nalu_data の長さが等しいことをチェックする
         if len(self.nalu_types) != len(self.nalu_data):
             raise ValueError(
@@ -238,56 +134,28 @@ class Mp4SampleEntryHev1:
                 f"nalu_types: {len(self.nalu_types)}, nalu_data: {len(self.nalu_data)}"
             )
 
-        nalu_types_array = (ctypes.c_uint8 * len(self.nalu_types))(*self.nalu_types)
-
-        # NALU サイズ配列を作成
-        nalu_sizes = (ctypes.c_uint32 * len(self.nalu_data))()
-        for i, data in enumerate(self.nalu_data):
-            nalu_sizes[i] = len(data)
-
-        # nalu_counts: 各 NALU タイプごとのユニット数
-        # 現在の実装では、各タイプごとに 1 つのユニットを想定
-        nalu_counts = (ctypes.c_uint32 * len(self.nalu_types))()
-        for i in range(len(self.nalu_types)):
-            nalu_counts[i] = 1
-
-        # 各 NALU データ用のバッファを作成（メモリ保持用）
-        nalu_data_buffers = []
-        nalu_data_pointers = (ctypes.POINTER(ctypes.c_uint8) * len(self.nalu_data))()
-
-        for i, data in enumerate(self.nalu_data):
-            # バッファを作成して保持
-            buf = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
-            nalu_data_buffers.append(buf)
-            # ポインタの配列に登録
-            nalu_data_pointers[i] = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint8))
-
-        raw_hev1 = _RawMp4SampleEntryHev1()
-        raw_hev1.width = self.width
-        raw_hev1.height = self.height
-        raw_hev1.general_profile_space = self.general_profile_space
-        raw_hev1.general_tier_flag = self.general_tier_flag
-        raw_hev1.general_profile_idc = self.general_profile_idc
-        raw_hev1.general_profile_compatibility_flags = self.general_profile_compatibility_flags
-        raw_hev1.general_constraint_indicator_flags = self.general_constraint_indicator_flags
-        raw_hev1.general_level_idc = self.general_level_idc
-        raw_hev1.chroma_format_idc = self.chroma_format_idc
-        raw_hev1.bit_depth_luma_minus8 = self.bit_depth_luma_minus8
-        raw_hev1.bit_depth_chroma_minus8 = self.bit_depth_chroma_minus8
-        raw_hev1.min_spatial_segmentation_idc = self.min_spatial_segmentation_idc
-        raw_hev1.parallelism_type = self.parallelism_type
-        raw_hev1.avg_frame_rate = self.avg_frame_rate
-        raw_hev1.constant_frame_rate = self.constant_frame_rate
-        raw_hev1.num_temporal_layers = self.num_temporal_layers
-        raw_hev1.temporal_id_nested = self.temporal_id_nested
-        raw_hev1.length_size_minus_one = self.length_size_minus_one
-        raw_hev1.nalu_array_count = len(self.nalu_types)
-        raw_hev1.nalu_types = ctypes.cast(nalu_types_array, ctypes.POINTER(ctypes.c_uint8))
-        raw_hev1.nalu_counts = ctypes.cast(nalu_counts, ctypes.POINTER(ctypes.c_uint32))
-        raw_hev1.nalu_data = ctypes.cast(nalu_data_pointers, ctypes.POINTER(ctypes.c_uint8))
-        raw_hev1.nalu_sizes = nalu_sizes
-
-        yield raw_hev1
+        native = _NativeSampleEntryHev1()
+        native.width = self.width
+        native.height = self.height
+        native.general_profile_space = self.general_profile_space
+        native.general_tier_flag = self.general_tier_flag
+        native.general_profile_idc = self.general_profile_idc
+        native.general_profile_compatibility_flags = self.general_profile_compatibility_flags
+        native.general_constraint_indicator_flags = self.general_constraint_indicator_flags
+        native.general_level_idc = self.general_level_idc
+        native.chroma_format_idc = self.chroma_format_idc
+        native.bit_depth_luma_minus8 = self.bit_depth_luma_minus8
+        native.bit_depth_chroma_minus8 = self.bit_depth_chroma_minus8
+        native.min_spatial_segmentation_idc = self.min_spatial_segmentation_idc
+        native.parallelism_type = self.parallelism_type
+        native.avg_frame_rate = self.avg_frame_rate
+        native.constant_frame_rate = self.constant_frame_rate
+        native.num_temporal_layers = self.num_temporal_layers
+        native.temporal_id_nested = self.temporal_id_nested
+        native.length_size_minus_one = self.length_size_minus_one
+        native.nalu_types = self.nalu_types
+        native.nalu_data = self.nalu_data
+        return native
 
 
 @dataclass
@@ -306,32 +174,29 @@ class Mp4SampleEntryVp08:
     matrix_coefficients: int = 1
 
     @staticmethod
-    def _from_raw(raw_vp08: _RawMp4SampleEntryVp08) -> "Mp4SampleEntryVp08":
+    def _from_native(native: _NativeSampleEntryVp08) -> "Mp4SampleEntryVp08":
         return Mp4SampleEntryVp08(
-            width=raw_vp08.width,
-            height=raw_vp08.height,
-            bit_depth=raw_vp08.bit_depth,
-            chroma_subsampling=raw_vp08.chroma_subsampling,
-            video_full_range_flag=raw_vp08.video_full_range_flag,
-            colour_primaries=raw_vp08.colour_primaries,
-            transfer_characteristics=raw_vp08.transfer_characteristics,
-            matrix_coefficients=raw_vp08.matrix_coefficients,
+            width=native.width,
+            height=native.height,
+            bit_depth=native.bit_depth,
+            chroma_subsampling=native.chroma_subsampling,
+            video_full_range_flag=native.video_full_range_flag,
+            colour_primaries=native.colour_primaries,
+            transfer_characteristics=native.transfer_characteristics,
+            matrix_coefficients=native.matrix_coefficients,
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryVp08, None, None]:
-        # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_vp08 = _RawMp4SampleEntryVp08()
-        raw_vp08.width = self.width
-        raw_vp08.height = self.height
-        raw_vp08.bit_depth = self.bit_depth
-        raw_vp08.chroma_subsampling = self.chroma_subsampling
-        raw_vp08.video_full_range_flag = self.video_full_range_flag
-        raw_vp08.colour_primaries = self.colour_primaries
-        raw_vp08.transfer_characteristics = self.transfer_characteristics
-        raw_vp08.matrix_coefficients = self.matrix_coefficients
-
-        yield raw_vp08
+    def _to_native(self) -> _NativeSampleEntryVp08:
+        native = _NativeSampleEntryVp08()
+        native.width = self.width
+        native.height = self.height
+        native.bit_depth = self.bit_depth
+        native.chroma_subsampling = self.chroma_subsampling
+        native.video_full_range_flag = self.video_full_range_flag
+        native.colour_primaries = self.colour_primaries
+        native.transfer_characteristics = self.transfer_characteristics
+        native.matrix_coefficients = self.matrix_coefficients
+        return native
 
 
 @dataclass
@@ -352,36 +217,33 @@ class Mp4SampleEntryVp09:
     matrix_coefficients: int = 1
 
     @staticmethod
-    def _from_raw(raw_vp09: _RawMp4SampleEntryVp09) -> "Mp4SampleEntryVp09":
+    def _from_native(native: _NativeSampleEntryVp09) -> "Mp4SampleEntryVp09":
         return Mp4SampleEntryVp09(
-            width=raw_vp09.width,
-            height=raw_vp09.height,
-            profile=raw_vp09.profile,
-            level=raw_vp09.level,
-            bit_depth=raw_vp09.bit_depth,
-            chroma_subsampling=raw_vp09.chroma_subsampling,
-            video_full_range_flag=raw_vp09.video_full_range_flag,
-            colour_primaries=raw_vp09.colour_primaries,
-            transfer_characteristics=raw_vp09.transfer_characteristics,
-            matrix_coefficients=raw_vp09.matrix_coefficients,
+            width=native.width,
+            height=native.height,
+            profile=native.profile,
+            level=native.level,
+            bit_depth=native.bit_depth,
+            chroma_subsampling=native.chroma_subsampling,
+            video_full_range_flag=native.video_full_range_flag,
+            colour_primaries=native.colour_primaries,
+            transfer_characteristics=native.transfer_characteristics,
+            matrix_coefficients=native.matrix_coefficients,
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryVp09, None, None]:
-        # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_vp09 = _RawMp4SampleEntryVp09()
-        raw_vp09.width = self.width
-        raw_vp09.height = self.height
-        raw_vp09.profile = self.profile
-        raw_vp09.level = self.level
-        raw_vp09.bit_depth = self.bit_depth
-        raw_vp09.chroma_subsampling = self.chroma_subsampling
-        raw_vp09.video_full_range_flag = self.video_full_range_flag
-        raw_vp09.colour_primaries = self.colour_primaries
-        raw_vp09.transfer_characteristics = self.transfer_characteristics
-        raw_vp09.matrix_coefficients = self.matrix_coefficients
-
-        yield raw_vp09
+    def _to_native(self) -> _NativeSampleEntryVp09:
+        native = _NativeSampleEntryVp09()
+        native.width = self.width
+        native.height = self.height
+        native.profile = self.profile
+        native.level = self.level
+        native.bit_depth = self.bit_depth
+        native.chroma_subsampling = self.chroma_subsampling
+        native.video_full_range_flag = self.video_full_range_flag
+        native.colour_primaries = self.colour_primaries
+        native.transfer_characteristics = self.transfer_characteristics
+        native.matrix_coefficients = self.matrix_coefficients
+        return native
 
 
 @dataclass
@@ -406,50 +268,41 @@ class Mp4SampleEntryAv01:
     initial_presentation_delay_minus_one: int = 0
 
     @staticmethod
-    def _from_raw(raw_av01: _RawMp4SampleEntryAv01) -> "Mp4SampleEntryAv01":
+    def _from_native(native: _NativeSampleEntryAv01) -> "Mp4SampleEntryAv01":
         return Mp4SampleEntryAv01(
-            width=raw_av01.width,
-            height=raw_av01.height,
-            seq_profile=raw_av01.seq_profile,
-            seq_level_idx_0=raw_av01.seq_level_idx_0,
-            seq_tier_0=raw_av01.seq_tier_0,
-            high_bitdepth=raw_av01.high_bitdepth,
-            twelve_bit=raw_av01.twelve_bit,
-            monochrome=raw_av01.monochrome,
-            chroma_subsampling_x=raw_av01.chroma_subsampling_x,
-            chroma_subsampling_y=raw_av01.chroma_subsampling_y,
-            chroma_sample_position=raw_av01.chroma_sample_position,
-            initial_presentation_delay_present=raw_av01.initial_presentation_delay_present,
-            initial_presentation_delay_minus_one=raw_av01.initial_presentation_delay_minus_one,
-            config_obus=bytes(raw_av01.config_obus[: raw_av01.config_obus_size]),
+            width=native.width,
+            height=native.height,
+            seq_profile=native.seq_profile,
+            seq_level_idx_0=native.seq_level_idx_0,
+            seq_tier_0=native.seq_tier_0,
+            high_bitdepth=native.high_bitdepth,
+            twelve_bit=native.twelve_bit,
+            monochrome=native.monochrome,
+            chroma_subsampling_x=native.chroma_subsampling_x,
+            chroma_subsampling_y=native.chroma_subsampling_y,
+            chroma_sample_position=native.chroma_sample_position,
+            initial_presentation_delay_present=native.initial_presentation_delay_present,
+            initial_presentation_delay_minus_one=native.initial_presentation_delay_minus_one,
+            config_obus=bytes(native.config_obus),
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryAv01, None, None]:
-        # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        config_obus_array = (ctypes.c_uint8 * len(self.config_obus)).from_buffer_copy(
-            self.config_obus
-        )
-        config_obus_size = len(self.config_obus)
-
-        raw_av01 = _RawMp4SampleEntryAv01()
-        raw_av01.width = self.width
-        raw_av01.height = self.height
-        raw_av01.seq_profile = self.seq_profile
-        raw_av01.seq_level_idx_0 = self.seq_level_idx_0
-        raw_av01.seq_tier_0 = self.seq_tier_0
-        raw_av01.high_bitdepth = self.high_bitdepth
-        raw_av01.twelve_bit = self.twelve_bit
-        raw_av01.monochrome = self.monochrome
-        raw_av01.chroma_subsampling_x = self.chroma_subsampling_x
-        raw_av01.chroma_subsampling_y = self.chroma_subsampling_y
-        raw_av01.chroma_sample_position = self.chroma_sample_position
-        raw_av01.initial_presentation_delay_present = self.initial_presentation_delay_present
-        raw_av01.initial_presentation_delay_minus_one = self.initial_presentation_delay_minus_one
-        raw_av01.config_obus = ctypes.cast(config_obus_array, ctypes.POINTER(ctypes.c_uint8))
-        raw_av01.config_obus_size = config_obus_size
-
-        yield raw_av01
+    def _to_native(self) -> _NativeSampleEntryAv01:
+        native = _NativeSampleEntryAv01()
+        native.width = self.width
+        native.height = self.height
+        native.seq_profile = self.seq_profile
+        native.seq_level_idx_0 = self.seq_level_idx_0
+        native.seq_tier_0 = self.seq_tier_0
+        native.high_bitdepth = self.high_bitdepth
+        native.twelve_bit = self.twelve_bit
+        native.monochrome = self.monochrome
+        native.chroma_subsampling_x = self.chroma_subsampling_x
+        native.chroma_subsampling_y = self.chroma_subsampling_y
+        native.chroma_sample_position = self.chroma_sample_position
+        native.initial_presentation_delay_present = self.initial_presentation_delay_present
+        native.initial_presentation_delay_minus_one = self.initial_presentation_delay_minus_one
+        native.config_obus = self.config_obus
+        return native
 
 
 @dataclass
@@ -466,30 +319,27 @@ class Mp4SampleEntryOpus:
     output_gain: int = 0
 
     @staticmethod
-    def _from_raw(raw_opus: _RawMp4SampleEntryOpus) -> "Mp4SampleEntryOpus":
+    def _from_native(native: _NativeSampleEntryOpus) -> "Mp4SampleEntryOpus":
         return Mp4SampleEntryOpus(
-            channel_count=raw_opus.channel_count,
-            sample_rate=raw_opus.sample_rate,
-            sample_size=raw_opus.sample_size,
-            pre_skip=raw_opus.pre_skip,
-            input_sample_rate=raw_opus.input_sample_rate,
-            output_gain=raw_opus.output_gain,
+            channel_count=native.channel_count,
+            sample_rate=native.sample_rate,
+            sample_size=native.sample_size,
+            pre_skip=native.pre_skip,
+            input_sample_rate=native.input_sample_rate,
+            output_gain=native.output_gain,
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryOpus, None, None]:
-        # NOTE: リソース管理的には不要ではあるけど、他のクラスとインタフェースを合わせるために with パターンを使っている
-        raw_opus = _RawMp4SampleEntryOpus()
-        raw_opus.channel_count = self.channel_count
-        raw_opus.sample_rate = self.sample_rate
-        raw_opus.sample_size = self.sample_size
-        raw_opus.pre_skip = self.pre_skip
-        raw_opus.input_sample_rate = (
+    def _to_native(self) -> _NativeSampleEntryOpus:
+        native = _NativeSampleEntryOpus()
+        native.channel_count = self.channel_count
+        native.sample_rate = self.sample_rate
+        native.sample_size = self.sample_size
+        native.pre_skip = self.pre_skip
+        native.input_sample_rate = (
             self.sample_rate if self.input_sample_rate is None else self.input_sample_rate
         )
-        raw_opus.output_gain = self.output_gain
-
-        yield raw_opus
+        native.output_gain = self.output_gain
+        return native
 
 
 @dataclass
@@ -507,40 +357,27 @@ class Mp4SampleEntryMp4a:
     avg_bitrate: int = 0
 
     @staticmethod
-    def _from_raw(raw_mp4a: _RawMp4SampleEntryMp4a) -> "Mp4SampleEntryMp4a":
-        dec_specific_info = bytes(raw_mp4a.dec_specific_info[: raw_mp4a.dec_specific_info_size])
-
+    def _from_native(native: _NativeSampleEntryMp4a) -> "Mp4SampleEntryMp4a":
         return Mp4SampleEntryMp4a(
-            channel_count=raw_mp4a.channel_count,
-            sample_rate=raw_mp4a.sample_rate,
-            sample_size=raw_mp4a.sample_size,
-            buffer_size_db=raw_mp4a.buffer_size_db,
-            max_bitrate=raw_mp4a.max_bitrate,
-            avg_bitrate=raw_mp4a.avg_bitrate,
-            dec_specific_info=dec_specific_info,
+            channel_count=native.channel_count,
+            sample_rate=native.sample_rate,
+            sample_size=native.sample_size,
+            buffer_size_db=native.buffer_size_db,
+            max_bitrate=native.max_bitrate,
+            avg_bitrate=native.avg_bitrate,
+            dec_specific_info=bytes(native.dec_specific_info),
         )
 
-    @contextmanager
-    def _to_raw(self) -> Generator[_RawMp4SampleEntryMp4a, None, None]:
-        # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
-        dec_specific_info_array = (ctypes.c_uint8 * len(self.dec_specific_info)).from_buffer_copy(
-            self.dec_specific_info
-        )
-        dec_specific_info_size = len(self.dec_specific_info)
-
-        raw_mp4a = _RawMp4SampleEntryMp4a()
-        raw_mp4a.channel_count = self.channel_count
-        raw_mp4a.sample_rate = self.sample_rate
-        raw_mp4a.sample_size = self.sample_size
-        raw_mp4a.buffer_size_db = self.buffer_size_db
-        raw_mp4a.max_bitrate = self.max_bitrate
-        raw_mp4a.avg_bitrate = self.avg_bitrate
-        raw_mp4a.dec_specific_info = ctypes.cast(
-            dec_specific_info_array, ctypes.POINTER(ctypes.c_uint8)
-        )
-        raw_mp4a.dec_specific_info_size = dec_specific_info_size
-
-        yield raw_mp4a
+    def _to_native(self) -> _NativeSampleEntryMp4a:
+        native = _NativeSampleEntryMp4a()
+        native.channel_count = self.channel_count
+        native.sample_rate = self.sample_rate
+        native.sample_size = self.sample_size
+        native.buffer_size_db = self.buffer_size_db
+        native.max_bitrate = self.max_bitrate
+        native.avg_bitrate = self.avg_bitrate
+        native.dec_specific_info = self.dec_specific_info
+        return native
 
 
 Mp4SampleEntry = (
@@ -557,65 +394,26 @@ MP4 サンプルエントリー
 """
 
 
-def _from_raw_mp4_sample_entry(raw_entry: _RawMp4SampleEntry) -> Mp4SampleEntry:
-    kind = _RawMp4SampleEntryKind(raw_entry.kind)
-
-    if kind == _RawMp4SampleEntryKind.AVC1:
-        return Mp4SampleEntryAvc1._from_raw(raw_entry.data.avc1)
-    elif kind == _RawMp4SampleEntryKind.HEV1:
-        return Mp4SampleEntryHev1._from_raw(raw_entry.data.hev1)
-    elif kind == _RawMp4SampleEntryKind.VP08:
-        return Mp4SampleEntryVp08._from_raw(raw_entry.data.vp08)
-    elif kind == _RawMp4SampleEntryKind.VP09:
-        return Mp4SampleEntryVp09._from_raw(raw_entry.data.vp09)
-    elif kind == _RawMp4SampleEntryKind.AV01:
-        return Mp4SampleEntryAv01._from_raw(raw_entry.data.av01)
-    elif kind == _RawMp4SampleEntryKind.OPUS:
-        return Mp4SampleEntryOpus._from_raw(raw_entry.data.opus)
-    elif kind == _RawMp4SampleEntryKind.MP4A:
-        return Mp4SampleEntryMp4a._from_raw(raw_entry.data.mp4a)
+def _from_native_sample_entry(native) -> Mp4SampleEntry:
+    """ネイティブのサンプルエントリーを Python 型に変換"""
+    if isinstance(native, _NativeSampleEntryAvc1):
+        return Mp4SampleEntryAvc1._from_native(native)
+    elif isinstance(native, _NativeSampleEntryHev1):
+        return Mp4SampleEntryHev1._from_native(native)
+    elif isinstance(native, _NativeSampleEntryVp08):
+        return Mp4SampleEntryVp08._from_native(native)
+    elif isinstance(native, _NativeSampleEntryVp09):
+        return Mp4SampleEntryVp09._from_native(native)
+    elif isinstance(native, _NativeSampleEntryAv01):
+        return Mp4SampleEntryAv01._from_native(native)
+    elif isinstance(native, _NativeSampleEntryOpus):
+        return Mp4SampleEntryOpus._from_native(native)
+    elif isinstance(native, _NativeSampleEntryMp4a):
+        return Mp4SampleEntryMp4a._from_native(native)
     else:
-        raise ValueError(f"Unsupported sample entry kind: {kind}")
+        raise ValueError(f"Unknown sample entry type: {type(native)}")
 
 
-@contextmanager
-def _to_raw_mp4_sample_entry(entry: Mp4SampleEntry) -> Generator[_RawMp4SampleEntry, None, None]:
-    raw_entry = _RawMp4SampleEntry()
-
-    if isinstance(entry, Mp4SampleEntryAvc1):
-        raw_entry.kind = _RawMp4SampleEntryKind.AVC1
-        with entry._to_raw() as raw_avc1:
-            raw_entry.data.avc1 = raw_avc1
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryHev1):
-        raw_entry.kind = _RawMp4SampleEntryKind.HEV1
-        with entry._to_raw() as raw_hev1:
-            raw_entry.data.hev1 = raw_hev1
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryVp08):
-        raw_entry.kind = _RawMp4SampleEntryKind.VP08
-        with entry._to_raw() as raw_vp08:
-            raw_entry.data.vp08 = raw_vp08
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryVp09):
-        raw_entry.kind = _RawMp4SampleEntryKind.VP09
-        with entry._to_raw() as raw_vp09:
-            raw_entry.data.vp09 = raw_vp09
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryAv01):
-        raw_entry.kind = _RawMp4SampleEntryKind.AV01
-        with entry._to_raw() as raw_av01:
-            raw_entry.data.av01 = raw_av01
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryOpus):
-        raw_entry.kind = _RawMp4SampleEntryKind.OPUS
-        with entry._to_raw() as raw_opus:
-            raw_entry.data.opus = raw_opus
-            yield raw_entry
-    elif isinstance(entry, Mp4SampleEntryMp4a):
-        raw_entry.kind = _RawMp4SampleEntryKind.MP4A
-        with entry._to_raw() as raw_mp4a:
-            raw_entry.data.mp4a = raw_mp4a
-            yield raw_entry
-    else:
-        raise ValueError(f"Unsupported sample entry type: {type(entry).__name__}")
+def _to_native_sample_entry(entry: Mp4SampleEntry):
+    """Python 型のサンプルエントリーをネイティブに変換"""
+    return entry._to_native()

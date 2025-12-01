@@ -1,13 +1,11 @@
-import ctypes
 import io
 from pathlib import Path
 from typing import Iterator, Optional, List
 
-from mp4._c_api import _get_lib, _RawMp4DemuxSample, _RawMp4DemuxTrackInfo, _RawMp4Error
+from mp4._mp4 import FileDemuxer as _NativeFileDemuxer
 from mp4._types import (
     Mp4TrackKind,
-    _from_raw_mp4_track_kind,
-    _from_raw_mp4_sample_entry,
+    _from_native_sample_entry,
     Mp4SampleEntry,
 )
 
@@ -119,8 +117,7 @@ class Mp4FileDemuxer:
     """
 
     def __init__(self, source: Path | str | io.IOBase) -> None:
-        self._lib = _get_lib()
-        self._raw_demuxer = None
+        self._native_demuxer = _NativeFileDemuxer()
         self._input_stream: Optional[io.IOBase] = None
         self._should_close_stream = False
 
@@ -139,11 +136,6 @@ class Mp4FileDemuxer:
                 f"source must be a file path (str or Path) or BinaryIO, got {type(source).__name__}"
             )
 
-        # C API の demuxer を初期化
-        self._raw_demuxer = self._lib.mp4_file_demuxer_new()
-        if not self._raw_demuxer:
-            raise RuntimeError("Failed to create mp4 demuxer")
-
     def __enter__(self) -> "Mp4FileDemuxer":
         return self
 
@@ -155,42 +147,15 @@ class Mp4FileDemuxer:
 
     def close(self) -> None:
         """Mp4FileDemuxer をクローズしてリソースを解放する"""
-        if self._raw_demuxer is not None:
-            self._lib.mp4_file_demuxer_free(self._raw_demuxer)
-            self._raw_demuxer = None
+        self._native_demuxer = None
 
         if self._input_stream is not None and self._should_close_stream:
             self._input_stream.close()
             self._input_stream = None
 
-    def _check_error(self, error_code: int) -> None:
-        if error_code == _RawMp4Error.OK:
-            return
-
-        msg = self._lib.mp4_file_demuxer_get_last_error(self._raw_demuxer).decode()
-
-        if error_code == _RawMp4Error.NO_MORE_SAMPLES:
-            raise StopIteration()
-        elif error_code == _RawMp4Error.NULL_POINTER:
-            raise ValueError(f"Null pointer error: {msg}")
-        elif error_code == _RawMp4Error.INPUT_REQUIRED:
-            raise RuntimeError(f"Input required: {msg}")
-        else:
-            raise RuntimeError(f"MP4 error ({error_code}): {msg}")
-
     def _feed_required_input(self) -> None:
         while True:
-            required_pos = ctypes.c_uint64()
-            required_size = ctypes.c_int32()
-
-            error = self._lib.mp4_file_demuxer_get_required_input(
-                self._raw_demuxer, ctypes.byref(required_pos), ctypes.byref(required_size)
-            )
-            self._check_error(error)
-
-            # ストリームから必要なデータを読み込む
-            pos = required_pos.value
-            size = required_size.value
+            pos, size = self._native_demuxer.get_required_input()
 
             if size == 0:
                 # 必要なデータは全て読んだ
@@ -205,80 +170,77 @@ class Mp4FileDemuxer:
                 self._input_stream.seek(pos)
                 data = self._input_stream.read(size)
 
-            buffer = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
-            error = self._lib.mp4_file_demuxer_handle_input(
-                self._raw_demuxer, pos, buffer, len(data)
-            )
-            self._check_error(error)
+            self._native_demuxer.handle_input(pos, data)
 
     @property
     def tracks(self) -> List[Mp4TrackInfo]:
         """MP4 ファイルに含まれるすべてのメディアトラック情報を取得する"""
-        if self._raw_demuxer is None:
+        if self._native_demuxer is None:
             raise RuntimeError("Demuxer is closed")
 
         while True:
-            tracks_ptr = ctypes.POINTER(_RawMp4DemuxTrackInfo)()
-            track_count = ctypes.c_uint32()
+            try:
+                native_tracks = self._native_demuxer.get_tracks()
+                break
+            except RuntimeError as e:
+                if "Input required" in str(e):
+                    self._feed_required_input()
+                    continue
+                raise
 
-            error = self._lib.mp4_file_demuxer_get_tracks(
-                self._raw_demuxer, ctypes.byref(tracks_ptr), ctypes.byref(track_count)
+        track_info_list = []
+        for track in native_tracks:
+            track_info = Mp4TrackInfo(
+                track_id=track.track_id,
+                kind=track.kind,
+                duration=track.duration,
+                timescale=track.timescale,
             )
-            if error == _RawMp4Error.INPUT_REQUIRED:
-                self._feed_required_input()
-                continue
-            self._check_error(error)
+            track_info_list.append(track_info)
 
-            track_info_list = []
-            for i in range(track_count.value):
-                track = tracks_ptr[i]
-                track_info = Mp4TrackInfo(
-                    track_id=track.track_id,
-                    kind=_from_raw_mp4_track_kind(track.kind),
-                    duration=track.duration,
-                    timescale=track.timescale,
-                )
-                track_info_list.append(track_info)
-
-            return track_info_list
+        return track_info_list
 
     def __iter__(self) -> Iterator[Mp4DemuxSample]:
-        if self._raw_demuxer is None:
+        if self._native_demuxer is None:
             raise RuntimeError("Demuxer is closed")
 
         return self
 
     def __next__(self) -> Mp4DemuxSample:
-        if self._raw_demuxer is None:
+        if self._native_demuxer is None:
             raise RuntimeError("Demuxer is closed")
 
         while True:
-            sample = _RawMp4DemuxSample()
-            error = self._lib.mp4_file_demuxer_next_sample(self._raw_demuxer, ctypes.byref(sample))
-            if error == _RawMp4Error.INPUT_REQUIRED:
-                self._feed_required_input()
-                continue
-            self._check_error(error)
+            try:
+                native_sample = self._native_demuxer.next_sample()
+            except RuntimeError as e:
+                if "Input required" in str(e):
+                    self._feed_required_input()
+                    continue
+                raise
+
+            if native_sample is None:
+                raise StopIteration()
 
             track_info = Mp4TrackInfo(
-                track_id=sample.track.contents.track_id,
-                kind=_from_raw_mp4_track_kind(sample.track.contents.kind),
-                duration=sample.track.contents.duration,
-                timescale=sample.track.contents.timescale,
+                track_id=native_sample.track.track_id,
+                kind=native_sample.track.kind,
+                duration=native_sample.track.duration,
+                timescale=native_sample.track.timescale,
             )
 
             # sample_entry を変換
             sample_entry = None
-            if sample.sample_entry:  # 前のサンプルと値が同じ場合は NULL (False 扱い) になる
-                sample_entry = _from_raw_mp4_sample_entry(sample.sample_entry.contents)
+            if native_sample.sample_entry is not None:
+                sample_entry = _from_native_sample_entry(native_sample.sample_entry)
 
             return Mp4DemuxSample(
                 track=track_info,
                 sample_entry=sample_entry,
-                keyframe=sample.keyframe,
-                timestamp=sample.timestamp,
-                duration=sample.duration,
-                data_offset=sample.data_offset,
-                data_size=sample.data_size,
+                keyframe=native_sample.keyframe,
+                timestamp=native_sample.timestamp,
+                duration=native_sample.duration,
+                data_offset=native_sample.data_offset,
+                data_size=native_sample.data_size,
                 input_stream=self._input_stream,
             )

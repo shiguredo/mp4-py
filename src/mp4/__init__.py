@@ -29,9 +29,9 @@ __version__ = version("mp4-py")
 
 def native_version() -> str:
     """mp4-rust のバージョンを返す"""
-    from mp4._c_api import _get_lib
+    from mp4._mp4 import native_version as _native_version
 
-    return _get_lib().mp4_library_version().decode("utf-8")
+    return _native_version()
 
 
 __all__ = [
