@@ -21,6 +21,7 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 
 ## 対応プラットフォーム
 
+- macOS 26 arm64
 - macOS 15 arm64
 - macOS 14 arm64
 - Ubuntu 24.04 x86_64
@@ -37,7 +38,6 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 - 3.14
 - 3.13
 - 3.12
-- 3.11
 
 ## インストール
 
