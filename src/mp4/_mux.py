@@ -1,9 +1,9 @@
 import ctypes
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 import io
 
-from mp4._c_api import _get_lib, _RawMp4MuxSample, _RawMp4SampleEntry, _RawMp4Error
+from mp4._c_api import _get_lib, _RawMp4MuxSample, _RawMp4Error
 from mp4._types import Mp4TrackKind, _to_raw_mp4_track_kind, _to_raw_mp4_sample_entry
 
 

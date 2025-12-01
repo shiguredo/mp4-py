@@ -1,6 +1,5 @@
 import io
 
-import pytest
 
 from mp4 import (
     Mp4FileDemuxer,

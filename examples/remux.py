@@ -11,7 +11,6 @@
 """
 
 import sys
-from pathlib import Path
 
 from mp4 import Mp4FileDemuxer, Mp4FileMuxer, Mp4MuxSample
 
