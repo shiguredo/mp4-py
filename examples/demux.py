@@ -29,6 +29,7 @@ def get_sample_entry_description(sample_entry) -> str:
         Mp4SampleEntryAv01,
         Mp4SampleEntryOpus,
         Mp4SampleEntryMp4a,
+        Mp4SampleEntryFlac,
     )
 
     if isinstance(sample_entry, Mp4SampleEntryAvc1):
@@ -67,6 +68,11 @@ def get_sample_entry_description(sample_entry) -> str:
     elif isinstance(sample_entry, Mp4SampleEntryMp4a):
         return (
             f"MP4A (AAC) - Channels: {sample_entry.channel_count}, "
+            f"Sample rate: {sample_entry.sample_rate} Hz"
+        )
+    elif isinstance(sample_entry, Mp4SampleEntryFlac):
+        return (
+            f"FLAC - Channels: {sample_entry.channel_count}, "
             f"Sample rate: {sample_entry.sample_rate} Hz"
         )
     else:
