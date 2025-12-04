@@ -663,5 +663,10 @@ def _to_raw_mp4_sample_entry(entry: Mp4SampleEntry) -> Generator[_RawMp4SampleEn
         with entry._to_raw() as raw_mp4a:
             raw_entry.data.mp4a = raw_mp4a
             yield raw_entry
+    elif isinstance(entry, Mp4SampleEntryFlac):
+        raw_entry.kind = _RawMp4SampleEntryKind.FLAC
+        with entry._to_raw() as raw_flac:
+            raw_entry.data.flac = raw_flac
+            yield raw_entry
     else:
         raise ValueError(f"Unsupported sample entry type: {type(entry).__name__}")
