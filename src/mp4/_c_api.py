@@ -24,6 +24,7 @@ class _RawMp4SampleEntryKind(IntEnum):
     AV01 = 4
     OPUS = 5
     MP4A = 6
+    FLAC = 7
 
 
 class _RawMp4Error(IntEnum):
@@ -158,6 +159,16 @@ class _RawMp4SampleEntryOpus(ctypes.Structure):
     ]
 
 
+class _RawMp4SampleEntryFlac(ctypes.Structure):
+    _fields_ = [
+        ("channel_count", ctypes.c_uint8),
+        ("sample_rate", ctypes.c_uint16),
+        ("sample_size", ctypes.c_uint16),
+        ("streaminfo_data", ctypes.POINTER(ctypes.c_uint8)),
+        ("streaminfo_size", ctypes.c_uint32),
+    ]
+
+
 class _RawMp4SampleEntryMp4a(ctypes.Structure):
     _fields_ = [
         ("channel_count", ctypes.c_uint8),
@@ -180,6 +191,7 @@ class _RawMp4SampleEntryData(ctypes.Union):
         ("av01", _RawMp4SampleEntryAv01),
         ("opus", _RawMp4SampleEntryOpus),
         ("mp4a", _RawMp4SampleEntryMp4a),
+        ("flac", _RawMp4SampleEntryFlac),
     ]
 
 

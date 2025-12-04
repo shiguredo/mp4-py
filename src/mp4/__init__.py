@@ -11,6 +11,7 @@ from mp4._types import (
     Mp4SampleEntryAv01,
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
+    Mp4SampleEntryFlac,
     Mp4SampleEntry,
 )
 from mp4._demux import (
@@ -46,6 +47,7 @@ __all__ = [
     "Mp4SampleEntryAv01",
     "Mp4SampleEntryOpus",
     "Mp4SampleEntryMp4a",
+    "Mp4SampleEntryFlac",
     "Mp4SampleEntry",
     "Mp4DemuxSample",
     "Mp4MuxSample",

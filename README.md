@@ -48,7 +48,7 @@ uv add mp4-py
 
 - 提供: `Mp4FileDemuxer`, `Mp4FileMuxer`
 - ビデオ/オーディオトラックの読み書きをサポート
-- VP8/VP9/AV1、H.264/H.265、Opus/AAC コーデック対応
+- VP8/VP9/AV1、H.264/H.265、Opus/AAC/FLAC コーデック対応
 
 ### MP4 ファイルの読み込み
 
