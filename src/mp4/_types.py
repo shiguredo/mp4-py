@@ -16,6 +16,7 @@ from mp4._c_api import (
     _RawMp4SampleEntryAv01,
     _RawMp4SampleEntryOpus,
     _RawMp4SampleEntryMp4a,
+    _RawMp4SampleEntryFlac,
     _RawMp4SampleEntryKind,
 )
 
@@ -543,6 +544,48 @@ class Mp4SampleEntryMp4a:
         yield raw_mp4a
 
 
+@dataclass
+class Mp4SampleEntryFlac:
+    """
+    FLAC 音声コーデック用のサンプルエントリー
+    """
+
+    channel_count: int
+    sample_rate: int
+    streaminfo_data: bytes
+    sample_size: int = 16
+
+    @staticmethod
+    def _from_raw(raw_flac: _RawMp4SampleEntryFlac) -> "Mp4SampleEntryFlac":
+        streaminfo_data = bytes(raw_flac.streaminfo_data[: raw_flac.streaminfo_size])
+
+        return Mp4SampleEntryFlac(
+            channel_count=raw_flac.channel_count,
+            sample_rate=raw_flac.sample_rate,
+            sample_size=raw_flac.sample_size,
+            streaminfo_data=streaminfo_data,
+        )
+
+    @contextmanager
+    def _to_raw(self) -> Generator[_RawMp4SampleEntryFlac, None, None]:
+        # NOTE: C 側に渡すアドレスの予期せぬ解放を防止するために with パターンを使っている
+        streaminfo_data_array = (ctypes.c_uint8 * len(self.streaminfo_data)).from_buffer_copy(
+            self.streaminfo_data
+        )
+        streaminfo_data_size = len(self.streaminfo_data)
+
+        raw_flac = _RawMp4SampleEntryFlac()
+        raw_flac.channel_count = self.channel_count
+        raw_flac.sample_rate = self.sample_rate
+        raw_flac.sample_size = self.sample_size
+        raw_flac.streaminfo_data = ctypes.cast(
+            streaminfo_data_array, ctypes.POINTER(ctypes.c_uint8)
+        )
+        raw_flac.streaminfo_size = streaminfo_data_size
+
+        yield raw_flac
+
+
 Mp4SampleEntry = (
     Mp4SampleEntryAvc1
     | Mp4SampleEntryHev1
@@ -551,6 +594,7 @@ Mp4SampleEntry = (
     | Mp4SampleEntryAv01
     | Mp4SampleEntryOpus
     | Mp4SampleEntryMp4a
+    | Mp4SampleEntryFlac
 )
 """
 MP4 サンプルエントリー
@@ -574,6 +618,8 @@ def _from_raw_mp4_sample_entry(raw_entry: _RawMp4SampleEntry) -> Mp4SampleEntry:
         return Mp4SampleEntryOpus._from_raw(raw_entry.data.opus)
     elif kind == _RawMp4SampleEntryKind.MP4A:
         return Mp4SampleEntryMp4a._from_raw(raw_entry.data.mp4a)
+    elif kind == _RawMp4SampleEntryKind.FLAC:
+        return Mp4SampleEntryFlac._from_raw(raw_entry.data.flac)
     else:
         raise ValueError(f"Unsupported sample entry kind: {kind}")
 
@@ -616,6 +662,11 @@ def _to_raw_mp4_sample_entry(entry: Mp4SampleEntry) -> Generator[_RawMp4SampleEn
         raw_entry.kind = _RawMp4SampleEntryKind.MP4A
         with entry._to_raw() as raw_mp4a:
             raw_entry.data.mp4a = raw_mp4a
+            yield raw_entry
+    elif isinstance(entry, Mp4SampleEntryFlac):
+        raw_entry.kind = _RawMp4SampleEntryKind.FLAC
+        with entry._to_raw() as raw_flac:
+            raw_entry.data.flac = raw_flac
             yield raw_entry
     else:
         raise ValueError(f"Unsupported sample entry type: {type(entry).__name__}")
