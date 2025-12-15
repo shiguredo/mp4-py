@@ -29,11 +29,14 @@ class Mp4Exception : public std::runtime_error {
 
 // ===== ユーティリティ関数 =====
 
-static std::string library_version() { return std::string(mp4_library_version()); }
+static std::string library_version() {
+  return std::string(mp4_library_version());
+}
 
 static uint32_t estimate_maximum_moov_box_size(uint32_t audio_sample_count,
                                                uint32_t video_sample_count) {
-  return mp4_estimate_maximum_moov_box_size(audio_sample_count, video_sample_count);
+  return mp4_estimate_maximum_moov_box_size(audio_sample_count,
+                                            video_sample_count);
 }
 
 static std::string track_kind_to_string(Mp4TrackKind kind) {
@@ -48,8 +51,10 @@ static std::string track_kind_to_string(Mp4TrackKind kind) {
 }
 
 static Mp4TrackKind string_to_track_kind(const std::string& kind) {
-  if (kind == "audio") return MP4_TRACK_KIND_AUDIO;
-  if (kind == "video") return MP4_TRACK_KIND_VIDEO;
+  if (kind == "audio")
+    return MP4_TRACK_KIND_AUDIO;
+  if (kind == "video")
+    return MP4_TRACK_KIND_VIDEO;
   throw Mp4Exception("Invalid track kind: " + kind);
 }
 
@@ -69,10 +74,14 @@ struct PyMp4SampleEntryAvc1 {
   std::optional<uint8_t> bit_depth_chroma_minus8;
 
   PyMp4SampleEntryAvc1() = default;
-  PyMp4SampleEntryAvc1(uint16_t width_, uint16_t height_, uint8_t avc_profile_indication_,
-                       uint8_t avc_level_indication_, uint8_t profile_compatibility_,
+  PyMp4SampleEntryAvc1(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t avc_profile_indication_,
+                       uint8_t avc_level_indication_,
+                       uint8_t profile_compatibility_,
                        const std::vector<nb::bytes>& sps_data_,
-                       const std::vector<nb::bytes>& pps_data_, uint8_t length_size_minus_one_,
+                       const std::vector<nb::bytes>& pps_data_,
+                       uint8_t length_size_minus_one_,
                        std::optional<uint8_t> chroma_format_,
                        std::optional<uint8_t> bit_depth_luma_minus8_,
                        std::optional<uint8_t> bit_depth_chroma_minus8_)
@@ -100,16 +109,16 @@ struct PyMp4SampleEntryAvc1 {
     // SPS データを抽出
     if (raw.sps_count > 0 && raw.sps_data && raw.sps_sizes) {
       for (uint32_t i = 0; i < raw.sps_count; i++) {
-        result.sps_data.push_back(
-            nb::bytes(reinterpret_cast<const char*>(raw.sps_data[i]), raw.sps_sizes[i]));
+        result.sps_data.push_back(nb::bytes(
+            reinterpret_cast<const char*>(raw.sps_data[i]), raw.sps_sizes[i]));
       }
     }
 
     // PPS データを抽出
     if (raw.pps_count > 0 && raw.pps_data && raw.pps_sizes) {
       for (uint32_t i = 0; i < raw.pps_count; i++) {
-        result.pps_data.push_back(
-            nb::bytes(reinterpret_cast<const char*>(raw.pps_data[i]), raw.pps_sizes[i]));
+        result.pps_data.push_back(nb::bytes(
+            reinterpret_cast<const char*>(raw.pps_data[i]), raw.pps_sizes[i]));
       }
     }
 
@@ -151,22 +160,33 @@ struct PyMp4SampleEntryHev1 {
   std::vector<nb::bytes> nalu_data;
 
   PyMp4SampleEntryHev1() = default;
-  PyMp4SampleEntryHev1(uint16_t width_, uint16_t height_, uint8_t general_profile_idc_,
-                       uint8_t general_level_idc_, const std::vector<uint8_t>& nalu_types_,
-                       const std::vector<nb::bytes>& nalu_data_, uint8_t general_profile_space_,
-                       uint8_t general_tier_flag_, uint32_t general_profile_compatibility_flags_,
-                       uint64_t general_constraint_indicator_flags_, uint8_t chroma_format_idc_,
-                       uint8_t bit_depth_luma_minus8_, uint8_t bit_depth_chroma_minus8_,
-                       uint16_t min_spatial_segmentation_idc_, uint8_t parallelism_type_,
-                       uint16_t avg_frame_rate_, uint8_t constant_frame_rate_,
-                       uint8_t num_temporal_layers_, uint8_t temporal_id_nested_,
+  PyMp4SampleEntryHev1(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t general_profile_idc_,
+                       uint8_t general_level_idc_,
+                       const std::vector<uint8_t>& nalu_types_,
+                       const std::vector<nb::bytes>& nalu_data_,
+                       uint8_t general_profile_space_,
+                       uint8_t general_tier_flag_,
+                       uint32_t general_profile_compatibility_flags_,
+                       uint64_t general_constraint_indicator_flags_,
+                       uint8_t chroma_format_idc_,
+                       uint8_t bit_depth_luma_minus8_,
+                       uint8_t bit_depth_chroma_minus8_,
+                       uint16_t min_spatial_segmentation_idc_,
+                       uint8_t parallelism_type_,
+                       uint16_t avg_frame_rate_,
+                       uint8_t constant_frame_rate_,
+                       uint8_t num_temporal_layers_,
+                       uint8_t temporal_id_nested_,
                        uint8_t length_size_minus_one_)
       : width(width_),
         height(height_),
         general_profile_space(general_profile_space_),
         general_tier_flag(general_tier_flag_),
         general_profile_idc(general_profile_idc_),
-        general_profile_compatibility_flags(general_profile_compatibility_flags_),
+        general_profile_compatibility_flags(
+            general_profile_compatibility_flags_),
         general_constraint_indicator_flags(general_constraint_indicator_flags_),
         general_level_idc(general_level_idc_),
         chroma_format_idc(chroma_format_idc_),
@@ -189,8 +209,10 @@ struct PyMp4SampleEntryHev1 {
     result.general_profile_space = raw.general_profile_space;
     result.general_tier_flag = raw.general_tier_flag;
     result.general_profile_idc = raw.general_profile_idc;
-    result.general_profile_compatibility_flags = raw.general_profile_compatibility_flags;
-    result.general_constraint_indicator_flags = raw.general_constraint_indicator_flags;
+    result.general_profile_compatibility_flags =
+        raw.general_profile_compatibility_flags;
+    result.general_constraint_indicator_flags =
+        raw.general_constraint_indicator_flags;
     result.general_level_idc = raw.general_level_idc;
     result.chroma_format_idc = raw.chroma_format_idc;
     result.bit_depth_luma_minus8 = raw.bit_depth_luma_minus8;
@@ -211,8 +233,8 @@ struct PyMp4SampleEntryHev1 {
         for (uint32_t j = 0; j < count; j++) {
           result.nalu_types.push_back(raw.nalu_types[i]);
           uint32_t size = raw.nalu_sizes[offset + j];
-          result.nalu_data.push_back(
-              nb::bytes(reinterpret_cast<const char*>(raw.nalu_data[offset + j]), size));
+          result.nalu_data.push_back(nb::bytes(
+              reinterpret_cast<const char*>(raw.nalu_data[offset + j]), size));
         }
         offset += count;
       }
@@ -233,9 +255,13 @@ struct PyMp4SampleEntryVp08 {
   uint8_t matrix_coefficients = 1;
 
   PyMp4SampleEntryVp08() = default;
-  PyMp4SampleEntryVp08(uint16_t width_, uint16_t height_, uint8_t bit_depth_ = 8,
-                       uint8_t chroma_subsampling_ = 0, bool video_full_range_flag_ = false,
-                       uint8_t colour_primaries_ = 1, uint8_t transfer_characteristics_ = 1,
+  PyMp4SampleEntryVp08(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t bit_depth_ = 8,
+                       uint8_t chroma_subsampling_ = 0,
+                       bool video_full_range_flag_ = false,
+                       uint8_t colour_primaries_ = 1,
+                       uint8_t transfer_characteristics_ = 1,
                        uint8_t matrix_coefficients_ = 1)
       : width(width_),
         height(height_),
@@ -273,10 +299,16 @@ struct PyMp4SampleEntryVp09 {
   uint8_t matrix_coefficients = 1;
 
   PyMp4SampleEntryVp09() = default;
-  PyMp4SampleEntryVp09(uint16_t width_, uint16_t height_, uint8_t profile_, uint8_t level_,
-                       uint8_t bit_depth_ = 8, uint8_t chroma_subsampling_ = 0,
-                       bool video_full_range_flag_ = false, uint8_t colour_primaries_ = 1,
-                       uint8_t transfer_characteristics_ = 1, uint8_t matrix_coefficients_ = 1)
+  PyMp4SampleEntryVp09(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t profile_,
+                       uint8_t level_,
+                       uint8_t bit_depth_ = 8,
+                       uint8_t chroma_subsampling_ = 0,
+                       bool video_full_range_flag_ = false,
+                       uint8_t colour_primaries_ = 1,
+                       uint8_t transfer_characteristics_ = 1,
+                       uint8_t matrix_coefficients_ = 1)
       : width(width_),
         height(height_),
         profile(profile_),
@@ -321,11 +353,19 @@ struct PyMp4SampleEntryAv01 {
   nb::bytes config_obus;
 
   PyMp4SampleEntryAv01() = default;
-  PyMp4SampleEntryAv01(uint16_t width_, uint16_t height_, uint8_t seq_profile_,
-                       uint8_t seq_level_idx_0_, const nb::bytes& config_obus_, uint8_t seq_tier_0_,
-                       uint8_t high_bitdepth_, uint8_t twelve_bit_, uint8_t monochrome_,
-                       uint8_t chroma_subsampling_x_, uint8_t chroma_subsampling_y_,
-                       uint8_t chroma_sample_position_, bool initial_presentation_delay_present_,
+  PyMp4SampleEntryAv01(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t seq_profile_,
+                       uint8_t seq_level_idx_0_,
+                       const nb::bytes& config_obus_,
+                       uint8_t seq_tier_0_,
+                       uint8_t high_bitdepth_,
+                       uint8_t twelve_bit_,
+                       uint8_t monochrome_,
+                       uint8_t chroma_subsampling_x_,
+                       uint8_t chroma_subsampling_y_,
+                       uint8_t chroma_sample_position_,
+                       bool initial_presentation_delay_present_,
                        uint8_t initial_presentation_delay_minus_one_)
       : width(width_),
         height(height_),
@@ -339,7 +379,8 @@ struct PyMp4SampleEntryAv01 {
         chroma_subsampling_y(chroma_subsampling_y_),
         chroma_sample_position(chroma_sample_position_),
         initial_presentation_delay_present(initial_presentation_delay_present_),
-        initial_presentation_delay_minus_one(initial_presentation_delay_minus_one_),
+        initial_presentation_delay_minus_one(
+            initial_presentation_delay_minus_one_),
         config_obus(config_obus_) {}
 
   static PyMp4SampleEntryAv01 from_raw(const Mp4SampleEntryAv01& raw) {
@@ -355,10 +396,12 @@ struct PyMp4SampleEntryAv01 {
     result.chroma_subsampling_x = raw.chroma_subsampling_x;
     result.chroma_subsampling_y = raw.chroma_subsampling_y;
     result.chroma_sample_position = raw.chroma_sample_position;
-    result.initial_presentation_delay_present = raw.initial_presentation_delay_present;
-    result.initial_presentation_delay_minus_one = raw.initial_presentation_delay_minus_one;
-    result.config_obus =
-        nb::bytes(reinterpret_cast<const char*>(raw.config_obus), raw.config_obus_size);
+    result.initial_presentation_delay_present =
+        raw.initial_presentation_delay_present;
+    result.initial_presentation_delay_minus_one =
+        raw.initial_presentation_delay_minus_one;
+    result.config_obus = nb::bytes(
+        reinterpret_cast<const char*>(raw.config_obus), raw.config_obus_size);
     return result;
   }
 };
@@ -372,10 +415,13 @@ struct PyMp4SampleEntryOpus {
   int16_t output_gain = 0;
 
   PyMp4SampleEntryOpus() = default;
-  PyMp4SampleEntryOpus(uint8_t channel_count_, uint16_t sample_rate_, uint16_t sample_size_ = 16,
-                       uint16_t pre_skip_ = 0,
-                       std::optional<uint32_t> input_sample_rate_ = std::nullopt,
-                       int16_t output_gain_ = 0)
+  PyMp4SampleEntryOpus(
+      uint8_t channel_count_,
+      uint16_t sample_rate_,
+      uint16_t sample_size_ = 16,
+      uint16_t pre_skip_ = 0,
+      std::optional<uint32_t> input_sample_rate_ = std::nullopt,
+      int16_t output_gain_ = 0)
       : channel_count(channel_count_),
         sample_rate(sample_rate_),
         sample_size(sample_size_),
@@ -405,9 +451,13 @@ struct PyMp4SampleEntryMp4a {
   nb::bytes dec_specific_info;
 
   PyMp4SampleEntryMp4a() = default;
-  PyMp4SampleEntryMp4a(uint8_t channel_count_, uint16_t sample_rate_,
-                       const nb::bytes& dec_specific_info_, uint16_t sample_size_,
-                       uint32_t buffer_size_db_, uint32_t max_bitrate_, uint32_t avg_bitrate_)
+  PyMp4SampleEntryMp4a(uint8_t channel_count_,
+                       uint16_t sample_rate_,
+                       const nb::bytes& dec_specific_info_,
+                       uint16_t sample_size_,
+                       uint32_t buffer_size_db_,
+                       uint32_t max_bitrate_,
+                       uint32_t avg_bitrate_)
       : channel_count(channel_count_),
         sample_rate(sample_rate_),
         sample_size(sample_size_),
@@ -425,7 +475,8 @@ struct PyMp4SampleEntryMp4a {
     result.max_bitrate = raw.max_bitrate;
     result.avg_bitrate = raw.avg_bitrate;
     result.dec_specific_info =
-        nb::bytes(reinterpret_cast<const char*>(raw.dec_specific_info), raw.dec_specific_info_size);
+        nb::bytes(reinterpret_cast<const char*>(raw.dec_specific_info),
+                  raw.dec_specific_info_size);
     return result;
   }
 };
@@ -437,8 +488,10 @@ struct PyMp4SampleEntryFlac {
   nb::bytes streaminfo_data;
 
   PyMp4SampleEntryFlac() = default;
-  PyMp4SampleEntryFlac(uint8_t channel_count_, uint16_t sample_rate_,
-                       const nb::bytes& streaminfo_data_, uint16_t sample_size_)
+  PyMp4SampleEntryFlac(uint8_t channel_count_,
+                       uint16_t sample_rate_,
+                       const nb::bytes& streaminfo_data_,
+                       uint16_t sample_size_)
       : channel_count(channel_count_),
         sample_rate(sample_rate_),
         sample_size(sample_size_),
@@ -450,14 +503,16 @@ struct PyMp4SampleEntryFlac {
     result.sample_rate = raw.sample_rate;
     result.sample_size = raw.sample_size;
     result.streaminfo_data =
-        nb::bytes(reinterpret_cast<const char*>(raw.streaminfo_data), raw.streaminfo_size);
+        nb::bytes(reinterpret_cast<const char*>(raw.streaminfo_data),
+                  raw.streaminfo_size);
     return result;
   }
 };
 
 // サンプルエントリーを C API の構造体から Python オブジェクトに変換
 static nb::object sample_entry_from_raw(const Mp4SampleEntry* raw) {
-  if (!raw) return nb::none();
+  if (!raw)
+    return nb::none();
 
   switch (raw->kind) {
     case MP4_SAMPLE_ENTRY_KIND_AVC1:
@@ -490,16 +545,23 @@ struct PyMp4TrackInfo {
   uint32_t timescale = 1;
 
   PyMp4TrackInfo() = default;
-  PyMp4TrackInfo(uint32_t track_id_, const std::string& kind_, uint64_t duration_,
+  PyMp4TrackInfo(uint32_t track_id_,
+                 const std::string& kind_,
+                 uint64_t duration_,
                  uint32_t timescale_)
-      : track_id(track_id_), kind(kind_), duration(duration_), timescale(timescale_) {}
+      : track_id(track_id_),
+        kind(kind_),
+        duration(duration_),
+        timescale(timescale_) {}
 
-  double duration_seconds() const { return static_cast<double>(duration) / timescale; }
+  double duration_seconds() const {
+    return static_cast<double>(duration) / timescale;
+  }
 
   std::string repr() const {
-    return "Mp4TrackInfo(track_id=" + std::to_string(track_id) + ", kind=" + kind +
-           ", duration=" + std::to_string(duration) + ", timescale=" + std::to_string(timescale) +
-           ")";
+    return "Mp4TrackInfo(track_id=" + std::to_string(track_id) +
+           ", kind=" + kind + ", duration=" + std::to_string(duration) +
+           ", timescale=" + std::to_string(timescale) + ")";
   }
 };
 
@@ -520,9 +582,14 @@ class PyMp4DemuxSample {
   std::optional<nb::bytes> data_cache_;
 
   PyMp4DemuxSample() = default;
-  PyMp4DemuxSample(const PyMp4TrackInfo& track_, const nb::object& sample_entry_, bool keyframe_,
-                   uint64_t timestamp_, uint32_t duration_, uint64_t data_offset_,
-                   uint64_t data_size_, const nb::object& input_stream_)
+  PyMp4DemuxSample(const PyMp4TrackInfo& track_,
+                   const nb::object& sample_entry_,
+                   bool keyframe_,
+                   uint64_t timestamp_,
+                   uint32_t duration_,
+                   uint64_t data_offset_,
+                   uint64_t data_size_,
+                   const nb::object& input_stream_)
       : track(track_),
         sample_entry(sample_entry_),
         keyframe(keyframe_),
@@ -538,8 +605,9 @@ class PyMp4DemuxSample {
       nb::object read_result = input_stream_.attr("read")(data_size_);
       data_cache_ = nb::cast<nb::bytes>(read_result);
       if (data_cache_->size() != data_size_) {
-        throw Mp4Exception("Failed to read sample data: expected " + std::to_string(data_size_) +
-                           " bytes, got " + std::to_string(data_cache_->size()) + " bytes");
+        throw Mp4Exception("Failed to read sample data: expected " +
+                           std::to_string(data_size_) + " bytes, got " +
+                           std::to_string(data_cache_->size()) + " bytes");
       }
     }
     return *data_cache_;
@@ -549,7 +617,9 @@ class PyMp4DemuxSample {
     return static_cast<double>(timestamp) / track.timescale;
   }
 
-  double duration_seconds() const { return static_cast<double>(duration) / track.timescale; }
+  double duration_seconds() const {
+    return static_cast<double>(duration) / track.timescale;
+  }
 
   std::string repr() const {
     return "Mp4DemuxSample(track_id=" + std::to_string(track.track_id) +
@@ -563,6 +633,10 @@ class PyMp4DemuxSample {
 
 class PyMp4FileDemuxer {
  public:
+  // コピー禁止
+  PyMp4FileDemuxer(const PyMp4FileDemuxer&) = delete;
+  PyMp4FileDemuxer& operator=(const PyMp4FileDemuxer&) = delete;
+
   PyMp4FileDemuxer(nb::object source)
       : demuxer_(nullptr), should_close_stream_(false), closed_(false) {
     // ソースの種別を判定
@@ -588,10 +662,16 @@ class PyMp4FileDemuxer {
 
   PyMp4FileDemuxer& enter() { return *this; }
 
-  void exit(nb::object /*exc_type*/, nb::object /*exc_val*/, nb::object /*exc_tb*/) { close(); }
+  void exit(nb::object /*exc_type*/,
+            nb::object /*exc_val*/,
+            nb::object /*exc_tb*/) {
+    close();
+  }
 
   void close() {
-    if (closed_) return;
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      return;
 
     if (demuxer_) {
       mp4_file_demuxer_free(demuxer_);
@@ -606,13 +686,16 @@ class PyMp4FileDemuxer {
   }
 
   std::vector<PyMp4TrackInfo> get_tracks() {
-    if (closed_) throw Mp4Exception("Demuxer is closed");
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      throw Mp4Exception("Demuxer is closed");
 
     while (true) {
       const Mp4DemuxTrackInfo* tracks;
       uint32_t track_count;
 
-      Mp4Error error = mp4_file_demuxer_get_tracks(demuxer_, &tracks, &track_count);
+      Mp4Error error =
+          mp4_file_demuxer_get_tracks(demuxer_, &tracks, &track_count);
       if (error == MP4_ERROR_INPUT_REQUIRED) {
         feed_required_input();
         continue;
@@ -633,12 +716,16 @@ class PyMp4FileDemuxer {
   }
 
   PyMp4FileDemuxer& iter() {
-    if (closed_) throw Mp4Exception("Demuxer is closed");
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      throw Mp4Exception("Demuxer is closed");
     return *this;
   }
 
   PyMp4DemuxSample next() {
-    if (closed_) throw Mp4Exception("Demuxer is closed");
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      throw Mp4Exception("Demuxer is closed");
 
     while (true) {
       Mp4DemuxSample raw_sample;
@@ -674,9 +761,11 @@ class PyMp4FileDemuxer {
   nb::object input_stream_;
   bool should_close_stream_;
   bool closed_;
+  mutable nb::ft_mutex mutex_;
 
   void check_error(Mp4Error error) {
-    if (error == MP4_ERROR_OK) return;
+    if (error == MP4_ERROR_OK)
+      return;
 
     const char* msg = mp4_file_demuxer_get_last_error(demuxer_);
     std::string msg_str = msg ? msg : "";
@@ -689,7 +778,8 @@ class PyMp4FileDemuxer {
       case MP4_ERROR_INPUT_REQUIRED:
         throw Mp4Exception("Input required: " + msg_str);
       default:
-        throw Mp4Exception("MP4 error (" + std::to_string(error) + "): " + msg_str);
+        throw Mp4Exception("MP4 error (" + std::to_string(error) +
+                           "): " + msg_str);
     }
   }
 
@@ -698,11 +788,12 @@ class PyMp4FileDemuxer {
       uint64_t required_pos;
       int32_t required_size;
 
-      Mp4Error error =
-          mp4_file_demuxer_get_required_input(demuxer_, &required_pos, &required_size);
+      Mp4Error error = mp4_file_demuxer_get_required_input(
+          demuxer_, &required_pos, &required_size);
       check_error(error);
 
-      if (required_size == 0) break;
+      if (required_size == 0)
+        break;
 
       input_stream_.attr("seek")(required_pos);
 
@@ -714,11 +805,10 @@ class PyMp4FileDemuxer {
       }
 
       nb::bytes data = nb::cast<nb::bytes>(data_obj);
-      const char* data_ptr = data.c_str();
+      const auto* data_ptr = static_cast<const uint8_t*>(data.data());
       size_t data_len = data.size();
 
-      error = mp4_file_demuxer_handle_input(demuxer_, required_pos,
-                                            reinterpret_cast<const uint8_t*>(data_ptr),
+      error = mp4_file_demuxer_handle_input(demuxer_, required_pos, data_ptr,
                                             static_cast<uint32_t>(data_len));
       check_error(error);
     }
@@ -736,7 +826,8 @@ struct PyMp4FileMuxerOptions {
 
   static uint32_t estimate_maximum_moov_box_size(uint32_t audio_sample_count,
                                                  uint32_t video_sample_count) {
-    return mp4_estimate_maximum_moov_box_size(audio_sample_count, video_sample_count);
+    return mp4_estimate_maximum_moov_box_size(audio_sample_count,
+                                              video_sample_count);
   }
 };
 
@@ -751,8 +842,12 @@ struct PyMp4MuxSample {
   nb::bytes data;
 
   PyMp4MuxSample() = default;
-  PyMp4MuxSample(const std::string& track_kind_, const nb::object& sample_entry_, bool keyframe_,
-                 uint32_t timescale_, uint32_t duration_, const nb::bytes& data_)
+  PyMp4MuxSample(const std::string& track_kind_,
+                 const nb::object& sample_entry_,
+                 bool keyframe_,
+                 uint32_t timescale_,
+                 uint32_t duration_,
+                 const nb::bytes& data_)
       : track_kind(track_kind_),
         sample_entry(sample_entry_),
         keyframe(keyframe_),
@@ -763,7 +858,8 @@ struct PyMp4MuxSample {
   std::string repr() const {
     return "Mp4MuxSample(track_kind=" + track_kind +
            ", keyframe=" + (keyframe ? "True" : "False") +
-           ", timescale=" + std::to_string(timescale) + ", duration=" + std::to_string(duration) +
+           ", timescale=" + std::to_string(timescale) +
+           ", duration=" + std::to_string(duration) +
            ", data_size=" + std::to_string(data.size()) + ")";
   }
 };
@@ -835,7 +931,8 @@ class SampleEntryConverter {
 
     // SPS データ
     for (auto& sps : entry.sps_data) {
-      sps_buffers.emplace_back(sps.c_str(), sps.c_str() + sps.size());
+      const auto* ptr = static_cast<const uint8_t*>(sps.data());
+      sps_buffers.emplace_back(ptr, ptr + sps.size());
       sps_sizes.push_back(static_cast<uint32_t>(sps.size()));
     }
     for (auto& buf : sps_buffers) {
@@ -847,7 +944,8 @@ class SampleEntryConverter {
 
     // PPS データ
     for (auto& pps : entry.pps_data) {
-      pps_buffers.emplace_back(pps.c_str(), pps.c_str() + pps.size());
+      const auto* ptr = static_cast<const uint8_t*>(pps.data());
+      pps_buffers.emplace_back(ptr, ptr + pps.size());
       pps_sizes.push_back(static_cast<uint32_t>(pps.size()));
     }
     for (auto& buf : pps_buffers) {
@@ -860,9 +958,11 @@ class SampleEntryConverter {
     // オプションフィールド
     avc1.is_chroma_format_present = entry.chroma_format.has_value();
     avc1.chroma_format = entry.chroma_format.value_or(0);
-    avc1.is_bit_depth_luma_minus8_present = entry.bit_depth_luma_minus8.has_value();
+    avc1.is_bit_depth_luma_minus8_present =
+        entry.bit_depth_luma_minus8.has_value();
     avc1.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8.value_or(0);
-    avc1.is_bit_depth_chroma_minus8_present = entry.bit_depth_chroma_minus8.has_value();
+    avc1.is_bit_depth_chroma_minus8_present =
+        entry.bit_depth_chroma_minus8.has_value();
     avc1.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8.value_or(0);
   }
 
@@ -875,8 +975,10 @@ class SampleEntryConverter {
     hev1.general_profile_space = entry.general_profile_space;
     hev1.general_tier_flag = entry.general_tier_flag;
     hev1.general_profile_idc = entry.general_profile_idc;
-    hev1.general_profile_compatibility_flags = entry.general_profile_compatibility_flags;
-    hev1.general_constraint_indicator_flags = entry.general_constraint_indicator_flags;
+    hev1.general_profile_compatibility_flags =
+        entry.general_profile_compatibility_flags;
+    hev1.general_constraint_indicator_flags =
+        entry.general_constraint_indicator_flags;
     hev1.general_level_idc = entry.general_level_idc;
     hev1.chroma_format_idc = entry.chroma_format_idc;
     hev1.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8;
@@ -899,7 +1001,8 @@ class SampleEntryConverter {
     nalu_counts_buffer.resize(entry.nalu_types.size(), 1);
 
     for (auto& nalu : entry.nalu_data) {
-      nalu_data_buffers.emplace_back(nalu.c_str(), nalu.c_str() + nalu.size());
+      const auto* ptr = static_cast<const uint8_t*>(nalu.data());
+      nalu_data_buffers.emplace_back(ptr, ptr + nalu.size());
       nalu_sizes_buffer.push_back(static_cast<uint32_t>(nalu.size()));
     }
     for (auto& buf : nalu_data_buffers) {
@@ -907,10 +1010,14 @@ class SampleEntryConverter {
     }
 
     hev1.nalu_array_count = static_cast<uint32_t>(entry.nalu_types.size());
-    hev1.nalu_types = nalu_types_buffer.empty() ? nullptr : nalu_types_buffer.data();
-    hev1.nalu_counts = nalu_counts_buffer.empty() ? nullptr : nalu_counts_buffer.data();
-    hev1.nalu_data = nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
-    hev1.nalu_sizes = nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
+    hev1.nalu_types =
+        nalu_types_buffer.empty() ? nullptr : nalu_types_buffer.data();
+    hev1.nalu_counts =
+        nalu_counts_buffer.empty() ? nullptr : nalu_counts_buffer.data();
+    hev1.nalu_data =
+        nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
+    hev1.nalu_sizes =
+        nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
   }
 
   void convert_vp08(PyMp4SampleEntryVp08& entry) {
@@ -958,11 +1065,15 @@ class SampleEntryConverter {
     av01.chroma_subsampling_x = entry.chroma_subsampling_x;
     av01.chroma_subsampling_y = entry.chroma_subsampling_y;
     av01.chroma_sample_position = entry.chroma_sample_position;
-    av01.initial_presentation_delay_present = entry.initial_presentation_delay_present;
-    av01.initial_presentation_delay_minus_one = entry.initial_presentation_delay_minus_one;
+    av01.initial_presentation_delay_present =
+        entry.initial_presentation_delay_present;
+    av01.initial_presentation_delay_minus_one =
+        entry.initial_presentation_delay_minus_one;
 
-    config_obus_buffer.assign(entry.config_obus.c_str(),
-                              entry.config_obus.c_str() + entry.config_obus.size());
+    const auto* config_ptr =
+        static_cast<const uint8_t*>(entry.config_obus.data());
+    config_obus_buffer.assign(config_ptr,
+                              config_ptr + entry.config_obus.size());
     av01.config_obus = config_obus_buffer.data();
     av01.config_obus_size = static_cast<uint32_t>(config_obus_buffer.size());
   }
@@ -975,7 +1086,8 @@ class SampleEntryConverter {
     opus.sample_rate = entry.sample_rate;
     opus.sample_size = entry.sample_size;
     opus.pre_skip = entry.pre_skip;
-    opus.input_sample_rate = entry.input_sample_rate.value_or(entry.sample_rate);
+    opus.input_sample_rate =
+        entry.input_sample_rate.value_or(entry.sample_rate);
     opus.output_gain = entry.output_gain;
   }
 
@@ -990,10 +1102,13 @@ class SampleEntryConverter {
     mp4a.max_bitrate = entry.max_bitrate;
     mp4a.avg_bitrate = entry.avg_bitrate;
 
-    dec_specific_info_buffer.assign(entry.dec_specific_info.c_str(),
-                                    entry.dec_specific_info.c_str() + entry.dec_specific_info.size());
+    const auto* dec_ptr =
+        static_cast<const uint8_t*>(entry.dec_specific_info.data());
+    dec_specific_info_buffer.assign(dec_ptr,
+                                    dec_ptr + entry.dec_specific_info.size());
     mp4a.dec_specific_info = dec_specific_info_buffer.data();
-    mp4a.dec_specific_info_size = static_cast<uint32_t>(dec_specific_info_buffer.size());
+    mp4a.dec_specific_info_size =
+        static_cast<uint32_t>(dec_specific_info_buffer.size());
   }
 
   void convert_flac(PyMp4SampleEntryFlac& entry) {
@@ -1004,8 +1119,10 @@ class SampleEntryConverter {
     flac.sample_rate = entry.sample_rate;
     flac.sample_size = entry.sample_size;
 
-    streaminfo_buffer.assign(entry.streaminfo_data.c_str(),
-                             entry.streaminfo_data.c_str() + entry.streaminfo_data.size());
+    const auto* streaminfo_ptr =
+        static_cast<const uint8_t*>(entry.streaminfo_data.data());
+    streaminfo_buffer.assign(streaminfo_ptr,
+                             streaminfo_ptr + entry.streaminfo_data.size());
     flac.streaminfo_data = streaminfo_buffer.data();
     flac.streaminfo_size = static_cast<uint32_t>(streaminfo_buffer.size());
   }
@@ -1013,10 +1130,19 @@ class SampleEntryConverter {
 
 class PyMp4FileMuxer {
  public:
-  PyMp4FileMuxer(nb::object destination, std::optional<PyMp4FileMuxerOptions> options)
-      : muxer_(nullptr), should_close_stream_(false), finalized_(false), closed_(false) {
+  // コピー禁止
+  PyMp4FileMuxer(const PyMp4FileMuxer&) = delete;
+  PyMp4FileMuxer& operator=(const PyMp4FileMuxer&) = delete;
+
+  PyMp4FileMuxer(nb::object destination,
+                 std::optional<PyMp4FileMuxerOptions> options)
+      : muxer_(nullptr),
+        should_close_stream_(false),
+        finalized_(false),
+        closed_(false) {
     // 出力先を判定
-    if (nb::hasattr(destination, "__fspath__") || nb::isinstance<nb::str>(destination)) {
+    if (nb::hasattr(destination, "__fspath__") ||
+        nb::isinstance<nb::str>(destination)) {
       nb::object builtins = nb::module_::import_("builtins");
       output_stream_ = builtins.attr("open")(destination, "wb");
       should_close_stream_ = true;
@@ -1033,8 +1159,8 @@ class PyMp4FileMuxer {
 
     // オプション設定
     if (options && options->reserved_moov_box_size > 0) {
-      Mp4Error error =
-          mp4_file_muxer_set_reserved_moov_box_size(muxer_, options->reserved_moov_box_size);
+      Mp4Error error = mp4_file_muxer_set_reserved_moov_box_size(
+          muxer_, options->reserved_moov_box_size);
       check_error(error);
     }
 
@@ -1050,14 +1176,20 @@ class PyMp4FileMuxer {
 
   PyMp4FileMuxer& enter() { return *this; }
 
-  void exit(nb::object /*exc_type*/, nb::object /*exc_val*/, nb::object /*exc_tb*/) { close(); }
+  void exit(nb::object /*exc_type*/,
+            nb::object /*exc_val*/,
+            nb::object /*exc_tb*/) {
+    close();
+  }
 
   void close() {
-    if (closed_) return;
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      return;
 
     if (muxer_) {
       if (!finalized_) {
-        finalize();
+        finalize_internal();
       }
       mp4_file_muxer_free(muxer_);
       muxer_ = nullptr;
@@ -1071,7 +1203,9 @@ class PyMp4FileMuxer {
   }
 
   void append_sample(PyMp4MuxSample& sample) {
-    if (closed_) throw Mp4Exception("Muxer is closed");
+    nb::ft_lock_guard lock(mutex_);
+    if (closed_)
+      throw Mp4Exception("Muxer is closed");
 
     // 現在のストリーム位置を取得
     nb::object tell_result = output_stream_.attr("tell")();
@@ -1101,8 +1235,17 @@ class PyMp4FileMuxer {
   }
 
   void finalize() {
-    if (closed_) throw Mp4Exception("Muxer is closed");
-    if (finalized_) return;
+    nb::ft_lock_guard lock(mutex_);
+    finalize_internal();
+  }
+
+ private:
+  // ロックを取らない内部版 (close() から呼び出し用)
+  void finalize_internal() {
+    if (closed_)
+      throw Mp4Exception("Muxer is closed");
+    if (finalized_)
+      return;
 
     Mp4Error error = mp4_file_muxer_finalize(muxer_);
     check_error(error);
@@ -1111,15 +1254,16 @@ class PyMp4FileMuxer {
     flush_output();
   }
 
- private:
   Mp4FileMuxer* muxer_;
   nb::object output_stream_;
   bool should_close_stream_;
   bool finalized_;
   bool closed_;
+  mutable nb::ft_mutex mutex_;
 
   void check_error(Mp4Error error) {
-    if (error == MP4_ERROR_OK) return;
+    if (error == MP4_ERROR_OK)
+      return;
 
     const char* msg = mp4_file_muxer_get_last_error(muxer_);
     std::string msg_str = msg ? msg : "";
@@ -1134,7 +1278,8 @@ class PyMp4FileMuxer {
       case MP4_ERROR_INVALID_INPUT:
         throw std::invalid_argument("Invalid input: " + msg_str);
       default:
-        throw Mp4Exception("MP4 error (" + std::to_string(error) + "): " + msg_str);
+        throw Mp4Exception("MP4 error (" + std::to_string(error) +
+                           "): " + msg_str);
     }
   }
 
@@ -1144,11 +1289,12 @@ class PyMp4FileMuxer {
       uint32_t output_size;
       const uint8_t* output_data;
 
-      Mp4Error error =
-          mp4_file_muxer_next_output(muxer_, &output_offset, &output_size, &output_data);
+      Mp4Error error = mp4_file_muxer_next_output(muxer_, &output_offset,
+                                                  &output_size, &output_data);
       check_error(error);
 
-      if (output_size == 0) break;
+      if (output_size == 0)
+        break;
 
       output_stream_.attr("seek")(output_offset);
       nb::bytes data(reinterpret_cast<const char*>(output_data), output_size);
@@ -1163,115 +1309,136 @@ NB_MODULE(mp4_ext, m) {
   m.doc() = "Python bindings for mp4-rust (nanobind)";
 
   // ユーティリティ関数
-  m.def("library_version", &library_version, nb::sig("def library_version() -> str"),
+  m.def("library_version", &library_version,
+        nb::sig("def library_version() -> str"),
         "mp4-rust ライブラリのバージョンを取得する");
 
-  m.def("estimate_maximum_moov_box_size", &estimate_maximum_moov_box_size, "audio_sample_count"_a,
-        "video_sample_count"_a,
-        nb::sig("def estimate_maximum_moov_box_size(audio_sample_count: int, video_sample_count: "
+  m.def("estimate_maximum_moov_box_size", &estimate_maximum_moov_box_size,
+        "audio_sample_count"_a, "video_sample_count"_a,
+        nb::sig("def estimate_maximum_moov_box_size(audio_sample_count: int, "
+                "video_sample_count: "
                 "int) -> int"),
         "moov ボックスの最大サイズを見積もる");
 
   // サンプルエントリークラス
   nb::class_<PyMp4SampleEntryAvc1>(m, "Mp4SampleEntryAvc1")
       .def(nb::init<>())
-      .def("__init__",
-           [](PyMp4SampleEntryAvc1* self, uint16_t width, uint16_t height,
-              uint8_t avc_profile_indication, uint8_t avc_level_indication,
-              uint8_t profile_compatibility, nb::object sps_data_obj, nb::object pps_data_obj,
-              uint8_t length_size_minus_one, std::optional<uint8_t> chroma_format,
-              std::optional<uint8_t> bit_depth_luma_minus8,
-              std::optional<uint8_t> bit_depth_chroma_minus8) {
-             new (self) PyMp4SampleEntryAvc1();
-             self->width = width;
-             self->height = height;
-             self->avc_profile_indication = avc_profile_indication;
-             self->avc_level_indication = avc_level_indication;
-             self->profile_compatibility = profile_compatibility;
-             self->length_size_minus_one = length_size_minus_one;
-             self->chroma_format = chroma_format;
-             self->bit_depth_luma_minus8 = bit_depth_luma_minus8;
-             self->bit_depth_chroma_minus8 = bit_depth_chroma_minus8;
-             if (!sps_data_obj.is_none()) {
-               for (auto item : sps_data_obj) {
-                 self->sps_data.push_back(nb::cast<nb::bytes>(item));
-               }
-             }
-             if (!pps_data_obj.is_none()) {
-               for (auto item : pps_data_obj) {
-                 self->pps_data.push_back(nb::cast<nb::bytes>(item));
-               }
-             }
-           },
-           "width"_a, "height"_a, "avc_profile_indication"_a, "avc_level_indication"_a,
-           "profile_compatibility"_a, "sps_data"_a = nb::none(), "pps_data"_a = nb::none(),
-           "length_size_minus_one"_a = 3, "chroma_format"_a = std::nullopt,
-           "bit_depth_luma_minus8"_a = std::nullopt, "bit_depth_chroma_minus8"_a = std::nullopt)
+      .def(
+          "__init__",
+          [](PyMp4SampleEntryAvc1* self, uint16_t width, uint16_t height,
+             uint8_t avc_profile_indication, uint8_t avc_level_indication,
+             uint8_t profile_compatibility, nb::object sps_data_obj,
+             nb::object pps_data_obj, uint8_t length_size_minus_one,
+             std::optional<uint8_t> chroma_format,
+             std::optional<uint8_t> bit_depth_luma_minus8,
+             std::optional<uint8_t> bit_depth_chroma_minus8) {
+            new (self) PyMp4SampleEntryAvc1();
+            self->width = width;
+            self->height = height;
+            self->avc_profile_indication = avc_profile_indication;
+            self->avc_level_indication = avc_level_indication;
+            self->profile_compatibility = profile_compatibility;
+            self->length_size_minus_one = length_size_minus_one;
+            self->chroma_format = chroma_format;
+            self->bit_depth_luma_minus8 = bit_depth_luma_minus8;
+            self->bit_depth_chroma_minus8 = bit_depth_chroma_minus8;
+            if (!sps_data_obj.is_none()) {
+              for (auto item : sps_data_obj) {
+                self->sps_data.push_back(nb::cast<nb::bytes>(item));
+              }
+            }
+            if (!pps_data_obj.is_none()) {
+              for (auto item : pps_data_obj) {
+                self->pps_data.push_back(nb::cast<nb::bytes>(item));
+              }
+            }
+          },
+          "width"_a, "height"_a, "avc_profile_indication"_a,
+          "avc_level_indication"_a, "profile_compatibility"_a,
+          "sps_data"_a = nb::none(), "pps_data"_a = nb::none(),
+          "length_size_minus_one"_a = 3, "chroma_format"_a = std::nullopt,
+          "bit_depth_luma_minus8"_a = std::nullopt,
+          "bit_depth_chroma_minus8"_a = std::nullopt)
       .def_rw("width", &PyMp4SampleEntryAvc1::width)
       .def_rw("height", &PyMp4SampleEntryAvc1::height)
-      .def_rw("avc_profile_indication", &PyMp4SampleEntryAvc1::avc_profile_indication)
-      .def_rw("profile_compatibility", &PyMp4SampleEntryAvc1::profile_compatibility)
-      .def_rw("avc_level_indication", &PyMp4SampleEntryAvc1::avc_level_indication)
-      .def_rw("length_size_minus_one", &PyMp4SampleEntryAvc1::length_size_minus_one)
+      .def_rw("avc_profile_indication",
+              &PyMp4SampleEntryAvc1::avc_profile_indication)
+      .def_rw("profile_compatibility",
+              &PyMp4SampleEntryAvc1::profile_compatibility)
+      .def_rw("avc_level_indication",
+              &PyMp4SampleEntryAvc1::avc_level_indication)
+      .def_rw("length_size_minus_one",
+              &PyMp4SampleEntryAvc1::length_size_minus_one)
       .def_rw("sps_data", &PyMp4SampleEntryAvc1::sps_data)
       .def_rw("pps_data", &PyMp4SampleEntryAvc1::pps_data)
       .def_rw("chroma_format", &PyMp4SampleEntryAvc1::chroma_format)
-      .def_rw("bit_depth_luma_minus8", &PyMp4SampleEntryAvc1::bit_depth_luma_minus8)
-      .def_rw("bit_depth_chroma_minus8", &PyMp4SampleEntryAvc1::bit_depth_chroma_minus8);
+      .def_rw("bit_depth_luma_minus8",
+              &PyMp4SampleEntryAvc1::bit_depth_luma_minus8)
+      .def_rw("bit_depth_chroma_minus8",
+              &PyMp4SampleEntryAvc1::bit_depth_chroma_minus8);
 
   nb::class_<PyMp4SampleEntryHev1>(m, "Mp4SampleEntryHev1")
       .def(nb::init<>())
-      .def("__init__",
-           [](PyMp4SampleEntryHev1* self, uint16_t width, uint16_t height,
-              uint8_t general_profile_idc, uint8_t general_level_idc, nb::object nalu_types_obj,
-              nb::object nalu_data_obj, uint8_t general_profile_space, uint8_t general_tier_flag,
-              uint32_t general_profile_compatibility_flags,
-              uint64_t general_constraint_indicator_flags, uint8_t chroma_format_idc,
-              uint8_t bit_depth_luma_minus8, uint8_t bit_depth_chroma_minus8,
-              uint16_t min_spatial_segmentation_idc, uint8_t parallelism_type,
-              uint16_t avg_frame_rate, uint8_t constant_frame_rate, uint8_t num_temporal_layers,
-              uint8_t temporal_id_nested, uint8_t length_size_minus_one) {
-             new (self) PyMp4SampleEntryHev1();
-             self->width = width;
-             self->height = height;
-             self->general_profile_space = general_profile_space;
-             self->general_tier_flag = general_tier_flag;
-             self->general_profile_idc = general_profile_idc;
-             self->general_profile_compatibility_flags = general_profile_compatibility_flags;
-             self->general_constraint_indicator_flags = general_constraint_indicator_flags;
-             self->general_level_idc = general_level_idc;
-             self->chroma_format_idc = chroma_format_idc;
-             self->bit_depth_luma_minus8 = bit_depth_luma_minus8;
-             self->bit_depth_chroma_minus8 = bit_depth_chroma_minus8;
-             self->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
-             self->parallelism_type = parallelism_type;
-             self->avg_frame_rate = avg_frame_rate;
-             self->constant_frame_rate = constant_frame_rate;
-             self->num_temporal_layers = num_temporal_layers;
-             self->temporal_id_nested = temporal_id_nested;
-             self->length_size_minus_one = length_size_minus_one;
-             if (!nalu_types_obj.is_none()) {
-               for (auto item : nalu_types_obj) {
-                 self->nalu_types.push_back(nb::cast<uint8_t>(item));
-               }
-             }
-             if (!nalu_data_obj.is_none()) {
-               for (auto item : nalu_data_obj) {
-                 self->nalu_data.push_back(nb::cast<nb::bytes>(item));
-               }
-             }
-           },
-           "width"_a, "height"_a, "general_profile_idc"_a, "general_level_idc"_a,
-           "nalu_types"_a = nb::none(), "nalu_data"_a = nb::none(), "general_profile_space"_a = 0,
-           "general_tier_flag"_a = 0, "general_profile_compatibility_flags"_a = 0,
-           "general_constraint_indicator_flags"_a = 0, "chroma_format_idc"_a = 1,
-           "bit_depth_luma_minus8"_a = 0, "bit_depth_chroma_minus8"_a = 0,
-           "min_spatial_segmentation_idc"_a = 0, "parallelism_type"_a = 0, "avg_frame_rate"_a = 0,
-           "constant_frame_rate"_a = 0, "num_temporal_layers"_a = 0, "temporal_id_nested"_a = 0,
-           "length_size_minus_one"_a = 3)
+      .def(
+          "__init__",
+          [](PyMp4SampleEntryHev1* self, uint16_t width, uint16_t height,
+             uint8_t general_profile_idc, uint8_t general_level_idc,
+             nb::object nalu_types_obj, nb::object nalu_data_obj,
+             uint8_t general_profile_space, uint8_t general_tier_flag,
+             uint32_t general_profile_compatibility_flags,
+             uint64_t general_constraint_indicator_flags,
+             uint8_t chroma_format_idc, uint8_t bit_depth_luma_minus8,
+             uint8_t bit_depth_chroma_minus8,
+             uint16_t min_spatial_segmentation_idc, uint8_t parallelism_type,
+             uint16_t avg_frame_rate, uint8_t constant_frame_rate,
+             uint8_t num_temporal_layers, uint8_t temporal_id_nested,
+             uint8_t length_size_minus_one) {
+            new (self) PyMp4SampleEntryHev1();
+            self->width = width;
+            self->height = height;
+            self->general_profile_space = general_profile_space;
+            self->general_tier_flag = general_tier_flag;
+            self->general_profile_idc = general_profile_idc;
+            self->general_profile_compatibility_flags =
+                general_profile_compatibility_flags;
+            self->general_constraint_indicator_flags =
+                general_constraint_indicator_flags;
+            self->general_level_idc = general_level_idc;
+            self->chroma_format_idc = chroma_format_idc;
+            self->bit_depth_luma_minus8 = bit_depth_luma_minus8;
+            self->bit_depth_chroma_minus8 = bit_depth_chroma_minus8;
+            self->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
+            self->parallelism_type = parallelism_type;
+            self->avg_frame_rate = avg_frame_rate;
+            self->constant_frame_rate = constant_frame_rate;
+            self->num_temporal_layers = num_temporal_layers;
+            self->temporal_id_nested = temporal_id_nested;
+            self->length_size_minus_one = length_size_minus_one;
+            if (!nalu_types_obj.is_none()) {
+              for (auto item : nalu_types_obj) {
+                self->nalu_types.push_back(nb::cast<uint8_t>(item));
+              }
+            }
+            if (!nalu_data_obj.is_none()) {
+              for (auto item : nalu_data_obj) {
+                self->nalu_data.push_back(nb::cast<nb::bytes>(item));
+              }
+            }
+          },
+          "width"_a, "height"_a, "general_profile_idc"_a, "general_level_idc"_a,
+          "nalu_types"_a = nb::none(), "nalu_data"_a = nb::none(),
+          "general_profile_space"_a = 0, "general_tier_flag"_a = 0,
+          "general_profile_compatibility_flags"_a = 0,
+          "general_constraint_indicator_flags"_a = 0, "chroma_format_idc"_a = 1,
+          "bit_depth_luma_minus8"_a = 0, "bit_depth_chroma_minus8"_a = 0,
+          "min_spatial_segmentation_idc"_a = 0, "parallelism_type"_a = 0,
+          "avg_frame_rate"_a = 0, "constant_frame_rate"_a = 0,
+          "num_temporal_layers"_a = 0, "temporal_id_nested"_a = 0,
+          "length_size_minus_one"_a = 3)
       .def_rw("width", &PyMp4SampleEntryHev1::width)
       .def_rw("height", &PyMp4SampleEntryHev1::height)
-      .def_rw("general_profile_space", &PyMp4SampleEntryHev1::general_profile_space)
+      .def_rw("general_profile_space",
+              &PyMp4SampleEntryHev1::general_profile_space)
       .def_rw("general_tier_flag", &PyMp4SampleEntryHev1::general_tier_flag)
       .def_rw("general_profile_idc", &PyMp4SampleEntryHev1::general_profile_idc)
       .def_rw("general_profile_compatibility_flags",
@@ -1280,21 +1447,26 @@ NB_MODULE(mp4_ext, m) {
               &PyMp4SampleEntryHev1::general_constraint_indicator_flags)
       .def_rw("general_level_idc", &PyMp4SampleEntryHev1::general_level_idc)
       .def_rw("chroma_format_idc", &PyMp4SampleEntryHev1::chroma_format_idc)
-      .def_rw("bit_depth_luma_minus8", &PyMp4SampleEntryHev1::bit_depth_luma_minus8)
-      .def_rw("bit_depth_chroma_minus8", &PyMp4SampleEntryHev1::bit_depth_chroma_minus8)
-      .def_rw("min_spatial_segmentation_idc", &PyMp4SampleEntryHev1::min_spatial_segmentation_idc)
+      .def_rw("bit_depth_luma_minus8",
+              &PyMp4SampleEntryHev1::bit_depth_luma_minus8)
+      .def_rw("bit_depth_chroma_minus8",
+              &PyMp4SampleEntryHev1::bit_depth_chroma_minus8)
+      .def_rw("min_spatial_segmentation_idc",
+              &PyMp4SampleEntryHev1::min_spatial_segmentation_idc)
       .def_rw("parallelism_type", &PyMp4SampleEntryHev1::parallelism_type)
       .def_rw("avg_frame_rate", &PyMp4SampleEntryHev1::avg_frame_rate)
       .def_rw("constant_frame_rate", &PyMp4SampleEntryHev1::constant_frame_rate)
       .def_rw("num_temporal_layers", &PyMp4SampleEntryHev1::num_temporal_layers)
       .def_rw("temporal_id_nested", &PyMp4SampleEntryHev1::temporal_id_nested)
-      .def_rw("length_size_minus_one", &PyMp4SampleEntryHev1::length_size_minus_one)
+      .def_rw("length_size_minus_one",
+              &PyMp4SampleEntryHev1::length_size_minus_one)
       .def_rw("nalu_types", &PyMp4SampleEntryHev1::nalu_types)
       .def_rw("nalu_data", &PyMp4SampleEntryHev1::nalu_data);
 
   nb::class_<PyMp4SampleEntryVp08>(m, "Mp4SampleEntryVp08")
       .def(nb::init<>())
-      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, bool, uint8_t, uint8_t, uint8_t>(),
+      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, bool, uint8_t,
+                    uint8_t, uint8_t>(),
            "width"_a, "height"_a, "bit_depth"_a = 8, "chroma_subsampling"_a = 0,
            "video_full_range_flag"_a = false, "colour_primaries"_a = 1,
            "transfer_characteristics"_a = 1, "matrix_coefficients"_a = 1)
@@ -1302,37 +1474,46 @@ NB_MODULE(mp4_ext, m) {
       .def_rw("height", &PyMp4SampleEntryVp08::height)
       .def_rw("bit_depth", &PyMp4SampleEntryVp08::bit_depth)
       .def_rw("chroma_subsampling", &PyMp4SampleEntryVp08::chroma_subsampling)
-      .def_rw("video_full_range_flag", &PyMp4SampleEntryVp08::video_full_range_flag)
+      .def_rw("video_full_range_flag",
+              &PyMp4SampleEntryVp08::video_full_range_flag)
       .def_rw("colour_primaries", &PyMp4SampleEntryVp08::colour_primaries)
-      .def_rw("transfer_characteristics", &PyMp4SampleEntryVp08::transfer_characteristics)
-      .def_rw("matrix_coefficients", &PyMp4SampleEntryVp08::matrix_coefficients);
+      .def_rw("transfer_characteristics",
+              &PyMp4SampleEntryVp08::transfer_characteristics)
+      .def_rw("matrix_coefficients",
+              &PyMp4SampleEntryVp08::matrix_coefficients);
 
   nb::class_<PyMp4SampleEntryVp09>(m, "Mp4SampleEntryVp09")
       .def(nb::init<>())
-      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, uint8_t, uint8_t, bool, uint8_t, uint8_t,
-                    uint8_t>(),
+      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, uint8_t, uint8_t,
+                    bool, uint8_t, uint8_t, uint8_t>(),
            "width"_a, "height"_a, "profile"_a, "level"_a, "bit_depth"_a = 8,
-           "chroma_subsampling"_a = 0, "video_full_range_flag"_a = false, "colour_primaries"_a = 1,
-           "transfer_characteristics"_a = 1, "matrix_coefficients"_a = 1)
+           "chroma_subsampling"_a = 0, "video_full_range_flag"_a = false,
+           "colour_primaries"_a = 1, "transfer_characteristics"_a = 1,
+           "matrix_coefficients"_a = 1)
       .def_rw("width", &PyMp4SampleEntryVp09::width)
       .def_rw("height", &PyMp4SampleEntryVp09::height)
       .def_rw("profile", &PyMp4SampleEntryVp09::profile)
       .def_rw("level", &PyMp4SampleEntryVp09::level)
       .def_rw("bit_depth", &PyMp4SampleEntryVp09::bit_depth)
       .def_rw("chroma_subsampling", &PyMp4SampleEntryVp09::chroma_subsampling)
-      .def_rw("video_full_range_flag", &PyMp4SampleEntryVp09::video_full_range_flag)
+      .def_rw("video_full_range_flag",
+              &PyMp4SampleEntryVp09::video_full_range_flag)
       .def_rw("colour_primaries", &PyMp4SampleEntryVp09::colour_primaries)
-      .def_rw("transfer_characteristics", &PyMp4SampleEntryVp09::transfer_characteristics)
-      .def_rw("matrix_coefficients", &PyMp4SampleEntryVp09::matrix_coefficients);
+      .def_rw("transfer_characteristics",
+              &PyMp4SampleEntryVp09::transfer_characteristics)
+      .def_rw("matrix_coefficients",
+              &PyMp4SampleEntryVp09::matrix_coefficients);
 
   nb::class_<PyMp4SampleEntryAv01>(m, "Mp4SampleEntryAv01")
       .def(nb::init<>())
-      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, nb::bytes, uint8_t, uint8_t, uint8_t,
-                    uint8_t, uint8_t, uint8_t, uint8_t, bool, uint8_t>(),
-           "width"_a, "height"_a, "seq_profile"_a, "seq_level_idx_0"_a, "config_obus"_a,
-           "seq_tier_0"_a = 0, "high_bitdepth"_a = 0, "twelve_bit"_a = 0, "monochrome"_a = 0,
-           "chroma_subsampling_x"_a = 1, "chroma_subsampling_y"_a = 1,
-           "chroma_sample_position"_a = 0, "initial_presentation_delay_present"_a = false,
+      .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, nb::bytes, uint8_t,
+                    uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, bool,
+                    uint8_t>(),
+           "width"_a, "height"_a, "seq_profile"_a, "seq_level_idx_0"_a,
+           "config_obus"_a, "seq_tier_0"_a = 0, "high_bitdepth"_a = 0,
+           "twelve_bit"_a = 0, "monochrome"_a = 0, "chroma_subsampling_x"_a = 1,
+           "chroma_subsampling_y"_a = 1, "chroma_sample_position"_a = 0,
+           "initial_presentation_delay_present"_a = false,
            "initial_presentation_delay_minus_one"_a = 0)
       .def_rw("width", &PyMp4SampleEntryAv01::width)
       .def_rw("height", &PyMp4SampleEntryAv01::height)
@@ -1342,9 +1523,12 @@ NB_MODULE(mp4_ext, m) {
       .def_rw("high_bitdepth", &PyMp4SampleEntryAv01::high_bitdepth)
       .def_rw("twelve_bit", &PyMp4SampleEntryAv01::twelve_bit)
       .def_rw("monochrome", &PyMp4SampleEntryAv01::monochrome)
-      .def_rw("chroma_subsampling_x", &PyMp4SampleEntryAv01::chroma_subsampling_x)
-      .def_rw("chroma_subsampling_y", &PyMp4SampleEntryAv01::chroma_subsampling_y)
-      .def_rw("chroma_sample_position", &PyMp4SampleEntryAv01::chroma_sample_position)
+      .def_rw("chroma_subsampling_x",
+              &PyMp4SampleEntryAv01::chroma_subsampling_x)
+      .def_rw("chroma_subsampling_y",
+              &PyMp4SampleEntryAv01::chroma_subsampling_y)
+      .def_rw("chroma_sample_position",
+              &PyMp4SampleEntryAv01::chroma_sample_position)
       .def_rw("initial_presentation_delay_present",
               &PyMp4SampleEntryAv01::initial_presentation_delay_present)
       .def_rw("initial_presentation_delay_minus_one",
@@ -1353,9 +1537,11 @@ NB_MODULE(mp4_ext, m) {
 
   nb::class_<PyMp4SampleEntryOpus>(m, "Mp4SampleEntryOpus")
       .def(nb::init<>())
-      .def(nb::init<uint8_t, uint16_t, uint16_t, uint16_t, std::optional<uint32_t>, int16_t>(),
-           "channel_count"_a, "sample_rate"_a, "sample_size"_a = 16, "pre_skip"_a = 0,
-           "input_sample_rate"_a = std::nullopt, "output_gain"_a = 0)
+      .def(nb::init<uint8_t, uint16_t, uint16_t, uint16_t,
+                    std::optional<uint32_t>, int16_t>(),
+           "channel_count"_a, "sample_rate"_a, "sample_size"_a = 16,
+           "pre_skip"_a = 0, "input_sample_rate"_a = std::nullopt,
+           "output_gain"_a = 0)
       .def_rw("channel_count", &PyMp4SampleEntryOpus::channel_count)
       .def_rw("sample_rate", &PyMp4SampleEntryOpus::sample_rate)
       .def_rw("sample_size", &PyMp4SampleEntryOpus::sample_size)
@@ -1365,9 +1551,11 @@ NB_MODULE(mp4_ext, m) {
 
   nb::class_<PyMp4SampleEntryMp4a>(m, "Mp4SampleEntryMp4a")
       .def(nb::init<>())
-      .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t, uint32_t, uint32_t, uint32_t>(),
-           "channel_count"_a, "sample_rate"_a, "dec_specific_info"_a, "sample_size"_a = 16,
-           "buffer_size_db"_a = 0, "max_bitrate"_a = 0, "avg_bitrate"_a = 0)
+      .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t, uint32_t, uint32_t,
+                    uint32_t>(),
+           "channel_count"_a, "sample_rate"_a, "dec_specific_info"_a,
+           "sample_size"_a = 16, "buffer_size_db"_a = 0, "max_bitrate"_a = 0,
+           "avg_bitrate"_a = 0)
       .def_rw("channel_count", &PyMp4SampleEntryMp4a::channel_count)
       .def_rw("sample_rate", &PyMp4SampleEntryMp4a::sample_rate)
       .def_rw("sample_size", &PyMp4SampleEntryMp4a::sample_size)
@@ -1378,8 +1566,9 @@ NB_MODULE(mp4_ext, m) {
 
   nb::class_<PyMp4SampleEntryFlac>(m, "Mp4SampleEntryFlac")
       .def(nb::init<>())
-      .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t>(), "channel_count"_a, "sample_rate"_a,
-           "streaminfo_data"_a, "sample_size"_a = 16)
+      .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t>(),
+           "channel_count"_a, "sample_rate"_a, "streaminfo_data"_a,
+           "sample_size"_a = 16)
       .def_rw("channel_count", &PyMp4SampleEntryFlac::channel_count)
       .def_rw("sample_rate", &PyMp4SampleEntryFlac::sample_rate)
       .def_rw("sample_size", &PyMp4SampleEntryFlac::sample_size)
@@ -1388,8 +1577,8 @@ NB_MODULE(mp4_ext, m) {
   // トラック情報
   nb::class_<PyMp4TrackInfo>(m, "Mp4TrackInfo")
       .def(nb::init<>())
-      .def(nb::init<uint32_t, std::string, uint64_t, uint32_t>(), "track_id"_a, "kind"_a,
-           "duration"_a, "timescale"_a)
+      .def(nb::init<uint32_t, std::string, uint64_t, uint32_t>(), "track_id"_a,
+           "kind"_a, "duration"_a, "timescale"_a)
       .def_rw("track_id", &PyMp4TrackInfo::track_id)
       .def_rw("kind", &PyMp4TrackInfo::kind)
       .def_rw("duration", &PyMp4TrackInfo::duration)
@@ -1400,16 +1589,16 @@ NB_MODULE(mp4_ext, m) {
   // Demuxer サンプル
   nb::class_<PyMp4DemuxSample>(m, "Mp4DemuxSample")
       .def(nb::init<>())
-      .def(nb::init<PyMp4TrackInfo, nb::object, bool, uint64_t, uint32_t, uint64_t, uint64_t,
-                    nb::object>(),
-           "track"_a, "sample_entry"_a, "keyframe"_a, "timestamp"_a, "duration"_a, "data_offset"_a,
-           "data_size"_a, "input_stream"_a)
+      .def(nb::init<PyMp4TrackInfo, nb::object, bool, uint64_t, uint32_t,
+                    uint64_t, uint64_t, nb::object>(),
+           "track"_a, "sample_entry"_a, "keyframe"_a, "timestamp"_a,
+           "duration"_a, "data_offset"_a, "data_size"_a, "input_stream"_a)
       .def_ro("track", &PyMp4DemuxSample::track)
       .def_ro("sample_entry", &PyMp4DemuxSample::sample_entry)
       .def_ro("keyframe", &PyMp4DemuxSample::keyframe)
       .def_ro("timestamp", &PyMp4DemuxSample::timestamp)
       .def_ro("duration", &PyMp4DemuxSample::duration)
-      .def_prop_ro("data", &PyMp4DemuxSample::get_data)
+      .def_prop_ro("data", &PyMp4DemuxSample::get_data, nb::lock_self())
       .def_prop_ro("timestamp_seconds", &PyMp4DemuxSample::timestamp_seconds)
       .def_prop_ro("duration_seconds", &PyMp4DemuxSample::duration_seconds)
       .def("__repr__", &PyMp4DemuxSample::repr);
@@ -1420,8 +1609,8 @@ NB_MODULE(mp4_ext, m) {
       .def("close", &PyMp4FileDemuxer::close)
       .def_prop_ro("tracks", &PyMp4FileDemuxer::get_tracks)
       .def("__enter__", &PyMp4FileDemuxer::enter)
-      .def("__exit__", &PyMp4FileDemuxer::exit, "exc_type"_a.none(), "exc_val"_a.none(),
-           "exc_tb"_a.none())
+      .def("__exit__", &PyMp4FileDemuxer::exit, "exc_type"_a.none(),
+           "exc_val"_a.none(), "exc_tb"_a.none())
       .def("__iter__", &PyMp4FileDemuxer::iter, nb::rv_policy::reference)
       .def("__next__", &PyMp4FileDemuxer::next);
 
@@ -1429,16 +1618,19 @@ NB_MODULE(mp4_ext, m) {
   nb::class_<PyMp4FileMuxerOptions>(m, "Mp4FileMuxerOptions")
       .def(nb::init<>())
       .def(nb::init<uint64_t>(), "reserved_moov_box_size"_a = 0)
-      .def_rw("reserved_moov_box_size", &PyMp4FileMuxerOptions::reserved_moov_box_size)
+      .def_rw("reserved_moov_box_size",
+              &PyMp4FileMuxerOptions::reserved_moov_box_size)
       .def_static("estimate_maximum_moov_box_size",
-                  &PyMp4FileMuxerOptions::estimate_maximum_moov_box_size, "audio_sample_count"_a,
-                  "video_sample_count"_a);
+                  &PyMp4FileMuxerOptions::estimate_maximum_moov_box_size,
+                  "audio_sample_count"_a, "video_sample_count"_a);
 
   // Muxer サンプル
   nb::class_<PyMp4MuxSample>(m, "Mp4MuxSample")
       .def(nb::init<>())
-      .def(nb::init<std::string, nb::object, bool, uint32_t, uint32_t, nb::bytes>(), "track_kind"_a,
-           "sample_entry"_a, "keyframe"_a, "timescale"_a, "duration"_a, "data"_a)
+      .def(nb::init<std::string, nb::object, bool, uint32_t, uint32_t,
+                    nb::bytes>(),
+           "track_kind"_a, "sample_entry"_a, "keyframe"_a, "timescale"_a,
+           "duration"_a, "data"_a)
       .def_rw("track_kind", &PyMp4MuxSample::track_kind)
       .def_rw("sample_entry", &PyMp4MuxSample::sample_entry)
       .def_rw("keyframe", &PyMp4MuxSample::keyframe)
@@ -1449,12 +1641,12 @@ NB_MODULE(mp4_ext, m) {
 
   // Muxer
   nb::class_<PyMp4FileMuxer>(m, "Mp4FileMuxer")
-      .def(nb::init<nb::object, std::optional<PyMp4FileMuxerOptions>>(), "destination"_a,
-           "options"_a = nb::none())
+      .def(nb::init<nb::object, std::optional<PyMp4FileMuxerOptions>>(),
+           "destination"_a, "options"_a = nb::none())
       .def("close", &PyMp4FileMuxer::close)
       .def("append_sample", &PyMp4FileMuxer::append_sample, "sample"_a)
       .def("finalize", &PyMp4FileMuxer::finalize)
       .def("__enter__", &PyMp4FileMuxer::enter)
-      .def("__exit__", &PyMp4FileMuxer::exit, "exc_type"_a.none(), "exc_val"_a.none(),
-           "exc_tb"_a.none());
+      .def("__exit__", &PyMp4FileMuxer::exit, "exc_type"_a.none(),
+           "exc_val"_a.none(), "exc_tb"_a.none());
 }

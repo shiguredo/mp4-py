@@ -32,16 +32,13 @@
 - コミットメッセージは命令形で書くこと
 - コミットメッセージは〜するという形で書くこと
 
+## C/C++
+
+- `make format` でフォーマットすること
+
 ## ビルド
 
-- `uv build` でビルドすること
-
-## テスト
-
-- `uv run pytest` でテストを実行すること
-- `tests/` 以下にテストコードを置くこと
-- テストを削除してテストを通したりしないこと
-- テストを無効にしてテストを通したりしないこと
+- `make develop` でビルドすること
 
 ## Python
 
@@ -49,3 +46,21 @@
 - `pip` を使わず `uv` を使うこと
 - `uv run ruff format` でコードをフォーマットすること
 - `uv run ruff check` でコードを静的解析すること
+
+### 型アノテーション
+
+- `Optional` ではなく `| None` を使うこと
+
+### Free-Threading
+
+- Free-Threading 環境では GIL は存在しない
+- GIL の取得と解放という表現は使わないこと
+- nanobind の `gil_scoped_release` は「Python ランタイムからデタッチ」として使用する
+- nanobind の `gil_scoped_acquire` は「Python ランタイムにアタッチ」として使用する
+
+### pytest
+
+- `uv run pytest` でテストを実行すること
+- `tests/` 以下にテストコードを置くこと
+- テストを削除してテストを通したりしないこと
+- テストを無効にしてテストを通したりしないこと
