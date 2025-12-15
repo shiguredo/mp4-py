@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 4.2)
 project(mp4-py LANGUAGES CXX)
 
 # プラットフォームチェック
-if(NOT APPLE AND NOT UNIX)
-  message(FATAL_ERROR "このパッケージは macOS と Linux のみをサポートしています")
+if(NOT APPLE AND NOT UNIX AND NOT WIN32)
+  message(FATAL_ERROR "このパッケージは macOS, Linux, Windows のみをサポートしています")
 endif()
 
 # Python / nanobind
@@ -34,6 +34,8 @@ if(APPLE)
   else()
     message(FATAL_ERROR "macOS x86_64 は mp4-rust リリースでサポートされていません")
   endif()
+elseif(WIN32)
+  set(MP4_ARTIFACT "mp4-${MP4_VERSION}_windows-2025_x86_64.zip")
 elseif(UNIX AND NOT APPLE)
   # /etc/os-release から Ubuntu バージョンを検出
   if(NOT EXISTS "/etc/os-release")
@@ -67,7 +69,11 @@ set(MP4_LIB_DIR    "${PROJECT_ROOT}/_build/mp4-rust/lib")
 file(MAKE_DIRECTORY ${MP4_LIB_DIR})
 
 # 静的ライブラリのパス
-set(MP4_STATIC_LIB "${MP4_LIB_DIR}/libmp4.a")
+if(WIN32)
+  set(MP4_STATIC_LIB "${MP4_LIB_DIR}/mp4.lib")
+else()
+  set(MP4_STATIC_LIB "${MP4_LIB_DIR}/libmp4.a")
+endif()
 
 # ビルド済みかチェック
 if(EXISTS ${MP4_STATIC_LIB})
@@ -107,9 +113,9 @@ add_dependencies(mp4_ext mp4_rust)
 target_include_directories(mp4_ext PRIVATE ${MP4_SOURCE_DIR}/include)
 
 # 静的ライブラリをリンク
-if(APPLE)
-  target_link_libraries(mp4_ext PRIVATE ${MP4_STATIC_LIB})
-elseif(UNIX)
+if(WIN32)
+  target_link_libraries(mp4_ext PRIVATE ${MP4_STATIC_LIB} ws2_32 userenv ntdll bcrypt)
+else()
   target_link_libraries(mp4_ext PRIVATE ${MP4_STATIC_LIB})
 endif()
 

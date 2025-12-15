@@ -39,6 +39,10 @@ jobs:
         run: uv run --with mypy stubgen src/mp4 -o src
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
+      - name: Install wheel and run tests
+        run: |
+          uv pip install wheelhouse/*.whl --reinstall
+          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
       - name: Upload wheels
         uses: actions/upload-artifact@v5
         with:
@@ -77,6 +81,10 @@ jobs:
         run: uv run --with mypy stubgen src/mp4 -o src
       - name: Build wheel
         run: uv build --wheel
+      - name: Install wheel and run tests
+        run: |
+          uv pip install dist/*.whl --reinstall
+          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
       - name: Repair wheel with auditwheel
         shell: bash
         run: |
@@ -88,7 +96,6 @@ jobs:
           path: wheelhouse/*.whl
 
   build_windows:
-    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +123,10 @@ jobs:
         run: uv run --with mypy stubgen src/mp4 -o src
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
+      - name: Install wheel and run tests
+        run: |
+          uv pip install wheelhouse/*.whl --reinstall
+          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
       - name: Upload Wheels
         uses: actions/upload-artifact@v6
         with:
@@ -127,7 +138,7 @@ jobs:
     needs:
       - build_ubuntu
       - build_macos
-      # - build_windows
+      - build_windows
     strategy:
       fail-fast: false
       matrix:
@@ -138,7 +149,7 @@ jobs:
           - name: ubuntu-22.04_arm64
           - name: macos-15_arm64
           - name: macos-14_arm64
-          # - name: windows-2025_x86_64
+          - name: windows-2025_x86_64
         python_version:
           - "3.14"
           - "3.14t"
@@ -165,7 +176,7 @@ jobs:
     needs:
       - build_ubuntu
       - build_macos
-      # - build_windows
+      - build_windows
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
