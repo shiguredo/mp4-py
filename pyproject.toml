@@ -30,7 +30,6 @@ Discord = "https://discord.gg/shiguredo"
 dev = [{ include-group = "test" }, { include-group = "lint" }]
 test = ["pytest", "pytest-timeout"]
 lint = ["ruff", "ty"]
-pypi = ["auditwheel", "patchelf"]
 
 [tool.scikit-build]
 minimum-version = "0.11"
