@@ -124,6 +124,7 @@ jobs:
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
+        shell: bash
         run: |
           uv pip install wheelhouse/*.whl --reinstall
           NO_UV_SYNC=1 uv run --group test pytest --timeout=60
