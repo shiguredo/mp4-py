@@ -3,8 +3,10 @@
 このテストは複数スレッドから同時にオブジェクトを操作し、
 データ競合やクラッシュが発生しないことを確認する。
 
-注意: GIL あり環境 (Python 3.12 など) では GIL がスレッド間の
-同時実行を制限するため、並列実行テストにはならない。
+テスト対象:
+1. 複数の独立したインスタンスの並列使用 (グローバル状態の競合検出)
+2. close() の concurrent 呼び出し (ロックの冪等性確認)
+3. 同一 Demuxer の並列イテレーション (ロック動作 + データ整合性確認)
 
 Free-Threading テストを実行するには:
     uv run -p 3.14t pytest tests/test_free_threading.py -v -s
@@ -21,21 +23,17 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from mp4 import (
-    Mp4DemuxSample,
     Mp4FileDemuxer,
     Mp4FileMuxer,
     Mp4MuxSample,
     Mp4SampleEntryVp08,
-    Mp4TrackInfo,
 )
 
 
 def is_gil_enabled() -> bool:
     """GIL が有効かどうかを確認"""
-    # Python 3.13+ で利用可能
     if hasattr(sys, "_is_gil_enabled"):
         return sys._is_gil_enabled()
-    # それ以前のバージョンは常に GIL 有効
     return True
 
 
@@ -45,42 +43,31 @@ pytestmark = pytest.mark.skipif(
     reason="Free-Threading テストは GIL 無効の Python (例: Python 3.13t, 3.14t) が必要です",
 )
 
-
-# テスト用定数
 NUM_THREADS = 8
-NUM_ITERATIONS = 100
-VIDEO_WIDTH = 1920
-VIDEO_HEIGHT = 1080
-SAMPLE_DURATION = 33333
-TIMESCALE = 1000000
+SAMPLES_PER_FILE = 10
 
 
 def create_dummy_sample(index: int, size: int = 1024) -> bytes:
-    """テスト用のダミーサンプルデータを生成"""
+    """テスト用のダミーサンプルデータを生成 (インデックスから決定的に生成)"""
     data = bytearray(size)
     for j in range(size):
         data[j] = (index * 17 + j) & 0xFF
     return bytes(data)
 
 
-def create_test_mp4_buffer() -> io.BytesIO:
+def create_test_mp4_buffer(sample_count: int = SAMPLES_PER_FILE) -> io.BytesIO:
     """テスト用の MP4 データを生成"""
     output_buffer = io.BytesIO()
     muxer = Mp4FileMuxer(output_buffer)
 
-    for i in range(10):
-        sample_data = create_dummy_sample(i)
-        sample_entry = Mp4SampleEntryVp08(
-            width=VIDEO_WIDTH,
-            height=VIDEO_HEIGHT,
-        )
+    for i in range(sample_count):
         mux_sample = Mp4MuxSample(
             track_kind="video",
-            sample_entry=sample_entry,
+            sample_entry=Mp4SampleEntryVp08(width=1920, height=1080),
             keyframe=True,
-            timescale=TIMESCALE,
-            duration=SAMPLE_DURATION,
-            data=sample_data,
+            timescale=1000000,
+            duration=33333,
+            data=create_dummy_sample(i),
         )
         muxer.append_sample(mux_sample)
 
@@ -89,242 +76,208 @@ def create_test_mp4_buffer() -> io.BytesIO:
     return output_buffer
 
 
-class TestDemuxerThreadSafety:
-    """Demuxer のスレッドセーフティテスト"""
-
-    def test_demuxer_tracks_concurrent_access(self):
-        """複数スレッドから同時に tracks プロパティにアクセス"""
-        mp4_buffer = create_test_mp4_buffer()
-        demuxer = Mp4FileDemuxer(mp4_buffer)
-
-        barrier = threading.Barrier(NUM_THREADS)
-        results = []
-        errors = []
-
-        def access_tracks(thread_id: int):
-            try:
-                barrier.wait()
-                for _ in range(NUM_ITERATIONS):
-                    tracks = demuxer.tracks
-                    results.append((thread_id, len(tracks)))
-            except Exception as e:
-                errors.append((thread_id, e))
-
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(access_tracks, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
-
-        assert len(errors) == 0, f"Errors occurred: {errors}"
-        assert len(results) == NUM_THREADS * NUM_ITERATIONS
-
-        # 全ての結果が同じトラック数を返すことを確認
-        track_counts = set(count for _, count in results)
-        assert len(track_counts) == 1, f"Inconsistent track counts: {track_counts}"
-
-    def test_demuxer_close_concurrent(self):
-        """複数スレッドから同時に close() を呼び出し"""
-        mp4_buffer = create_test_mp4_buffer()
-        demuxer = Mp4FileDemuxer(mp4_buffer)
-
-        barrier = threading.Barrier(NUM_THREADS)
-        errors = []
-
-        def close_demuxer(thread_id: int):
-            try:
-                barrier.wait()
-                # 複数回 close() を呼んでも安全であることを確認
-                for _ in range(NUM_ITERATIONS):
-                    demuxer.close()
-            except Exception as e:
-                errors.append((thread_id, e))
-
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(close_demuxer, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
-
-        assert len(errors) == 0, f"Errors occurred: {errors}"
+# =============================================================================
+# グローバル状態の競合検出テスト
+# =============================================================================
 
 
-class TestDemuxSampleThreadSafety:
-    """DemuxSample のスレッドセーフティテスト"""
+def test_multiple_demuxers_parallel():
+    """複数の Demuxer インスタンスを並列で使用
 
-    def test_demux_sample_data_concurrent_access(self):
-        """複数スレッドから同時に data プロパティにアクセス (遅延読み込み)"""
-        # サンプルを作成
-        track = Mp4TrackInfo(
-            track_id=1,
-            kind="video",
-            duration=5000000,
-            timescale=1000000,
-        )
-        sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
-        test_data = b"test_data_for_concurrent_access"
-
-        demux_sample = Mp4DemuxSample(
-            track=track,
-            sample_entry=sample_entry,
-            keyframe=True,
-            timestamp=500000,
-            duration=33333,
-            data_offset=0,
-            data_size=len(test_data),
-            input_stream=io.BytesIO(test_data),
-        )
-
-        barrier = threading.Barrier(NUM_THREADS)
-        results = []
-        errors = []
-
-        def access_data(thread_id: int):
-            try:
-                barrier.wait()
-                for _ in range(NUM_ITERATIONS):
-                    # data プロパティは遅延読み込みでキャッシュされる
-                    data = demux_sample.data
-                    results.append((thread_id, data))
-            except Exception as e:
-                errors.append((thread_id, e))
-
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(access_data, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
-
-        assert len(errors) == 0, f"Errors occurred: {errors}"
-        assert len(results) == NUM_THREADS * NUM_ITERATIONS
-
-        # 全ての結果が同じデータを返すことを確認
-        data_set = set(data for _, data in results)
-        assert len(data_set) == 1, f"Inconsistent data: {data_set}"
-        assert test_data in data_set
-
-
-class TestMuxerThreadSafety:
-    """Muxer のスレッドセーフティテスト
-
-    注意: Muxer は同一インスタンスへの同時書き込みはサポートされない設計だが、
-    close() の同時呼び出しは安全であるべき。
+    目的: mp4-rust ライブラリ内部のグローバル状態がスレッドセーフであることを確認
+    検証: 各スレッドで全サンプルが正しく読み取れること
     """
+    results = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(NUM_THREADS)
 
-    def test_muxer_close_concurrent(self):
-        """複数スレッドから同時に close() を呼び出し"""
+    def process_demuxer(thread_id: int):
+        barrier.wait()
+        mp4_buffer = create_test_mp4_buffer()
+        demuxer = Mp4FileDemuxer(mp4_buffer)
+
+        tracks = demuxer.tracks
+        samples = list(demuxer)
+
+        # サンプルデータの内容を検証
+        data_valid = all(sample.data == create_dummy_sample(i) for i, sample in enumerate(samples))
+
+        with lock:
+            results.append((thread_id, len(tracks), len(samples), data_valid))
+        demuxer.close()
+
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = [executor.submit(process_demuxer, i) for i in range(NUM_THREADS)]
+        for f in futures:
+            f.result()
+
+    assert len(results) == NUM_THREADS
+    for thread_id, track_count, sample_count, data_valid in results:
+        assert track_count == 1, f"Thread {thread_id}: unexpected track count"
+        assert sample_count == SAMPLES_PER_FILE, f"Thread {thread_id}: unexpected sample count"
+        assert data_valid, f"Thread {thread_id}: sample data corrupted"
+
+
+def test_multiple_muxers_parallel():
+    """複数の Muxer インスタンスを並列で使用
+
+    目的: mp4-rust ライブラリ内部のグローバル状態がスレッドセーフであることを確認
+    検証: 生成した MP4 を Demuxer で読み取り、内容が正しいか確認
+    """
+    results = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(NUM_THREADS)
+    samples_per_thread = 5
+
+    def process_muxer(thread_id: int):
+        barrier.wait()
         output_buffer = io.BytesIO()
         muxer = Mp4FileMuxer(output_buffer)
 
-        # 1 つサンプルを追加
-        sample_data = create_dummy_sample(0)
-        sample_entry = Mp4SampleEntryVp08(
-            width=VIDEO_WIDTH,
-            height=VIDEO_HEIGHT,
+        # スレッドごとに異なるデータを書き込み
+        expected_data = []
+        for i in range(samples_per_thread):
+            sample_data = create_dummy_sample(thread_id * 100 + i)
+            expected_data.append(sample_data)
+            mux_sample = Mp4MuxSample(
+                track_kind="video",
+                sample_entry=Mp4SampleEntryVp08(width=1920, height=1080),
+                keyframe=True,
+                timescale=1000000,
+                duration=33333,
+                data=sample_data,
+            )
+            muxer.append_sample(mux_sample)
+
+        muxer.finalize()
+        muxer.close()
+
+        # 生成した MP4 を読み取って検証
+        output_buffer.seek(0)
+        demuxer = Mp4FileDemuxer(output_buffer)
+        read_samples = list(demuxer)
+        demuxer.close()
+
+        # データの整合性を確認
+        data_valid = len(read_samples) == samples_per_thread and all(
+            read_samples[i].data == expected_data[i] for i in range(samples_per_thread)
         )
-        mux_sample = Mp4MuxSample(
-            track_kind="video",
-            sample_entry=sample_entry,
-            keyframe=True,
-            timescale=TIMESCALE,
-            duration=SAMPLE_DURATION,
-            data=sample_data,
-        )
-        muxer.append_sample(mux_sample)
 
-        barrier = threading.Barrier(NUM_THREADS)
-        errors = []
+        with lock:
+            results.append((thread_id, data_valid))
 
-        def close_muxer(thread_id: int):
-            try:
-                barrier.wait()
-                # 複数回 close() を呼んでも安全であることを確認
-                for _ in range(NUM_ITERATIONS):
-                    muxer.close()
-            except Exception as e:
-                errors.append((thread_id, e))
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = [executor.submit(process_muxer, i) for i in range(NUM_THREADS)]
+        for f in futures:
+            f.result()
 
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(close_muxer, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
-
-        assert len(errors) == 0, f"Errors occurred: {errors}"
+    assert len(results) == NUM_THREADS
+    for thread_id, data_valid in results:
+        assert data_valid, f"Thread {thread_id}: muxed data corrupted or incomplete"
 
 
-class TestMultipleInstancesThreadSafety:
-    """複数インスタンスの並列使用テスト"""
+# =============================================================================
+# close() の冪等性テスト
+# =============================================================================
 
-    def test_multiple_demuxers_parallel(self):
-        """複数の Demuxer インスタンスを並列で使用"""
-        errors = []
-        results = []
 
-        def process_demuxer(thread_id: int):
-            try:
-                # 各スレッドが独自の MP4 バッファと Demuxer を持つ
-                mp4_buffer = create_test_mp4_buffer()
-                demuxer = Mp4FileDemuxer(mp4_buffer)
+def test_demuxer_close_concurrent():
+    """複数スレッドから同時に close() を呼び出し
 
-                tracks = demuxer.tracks
-                samples = list(demuxer)
+    目的: close() が複数スレッドから同時に呼び出されても安全であることを確認
+    """
+    mp4_buffer = create_test_mp4_buffer()
+    demuxer = Mp4FileDemuxer(mp4_buffer)
+    barrier = threading.Barrier(NUM_THREADS)
 
-                results.append((thread_id, len(tracks), len(samples)))
-                demuxer.close()
-            except Exception as e:
-                errors.append((thread_id, e))
+    def close_demuxer(_thread_id: int):
+        barrier.wait()
+        for _ in range(100):
+            demuxer.close()
 
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(process_demuxer, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = [executor.submit(close_demuxer, i) for i in range(NUM_THREADS)]
+        for f in futures:
+            f.result()
 
-        assert len(errors) == 0, f"Errors occurred: {errors}"
-        assert len(results) == NUM_THREADS
 
-        # 全てのスレッドが同じ結果を得ることを確認
-        for thread_id, track_count, sample_count in results:
-            assert track_count == 1, f"Thread {thread_id}: unexpected track count {track_count}"
-            assert sample_count == 10, f"Thread {thread_id}: unexpected sample count {sample_count}"
+def test_muxer_close_concurrent():
+    """複数スレッドから同時に close() を呼び出し
 
-    def test_multiple_muxers_parallel(self):
-        """複数の Muxer インスタンスを並列で使用"""
-        errors = []
-        results = []
+    目的: close() が複数スレッドから同時に呼び出されても安全であることを確認
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    mux_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=1920, height=1080),
+        keyframe=True,
+        timescale=1000000,
+        duration=33333,
+        data=create_dummy_sample(0),
+    )
+    muxer.append_sample(mux_sample)
+    barrier = threading.Barrier(NUM_THREADS)
 
-        def process_muxer(thread_id: int):
-            try:
-                output_buffer = io.BytesIO()
-                muxer = Mp4FileMuxer(output_buffer)
+    def close_muxer(_thread_id: int):
+        barrier.wait()
+        for _ in range(100):
+            muxer.close()
 
-                for i in range(5):
-                    sample_data = create_dummy_sample(thread_id * 100 + i)
-                    sample_entry = Mp4SampleEntryVp08(
-                        width=VIDEO_WIDTH,
-                        height=VIDEO_HEIGHT,
-                    )
-                    mux_sample = Mp4MuxSample(
-                        track_kind="video",
-                        sample_entry=sample_entry,
-                        keyframe=True,
-                        timescale=TIMESCALE,
-                        duration=SAMPLE_DURATION,
-                        data=sample_data,
-                    )
-                    muxer.append_sample(mux_sample)
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = [executor.submit(close_muxer, i) for i in range(NUM_THREADS)]
+        for f in futures:
+            f.result()
 
-                muxer.finalize()
-                muxer.close()
 
-                results.append((thread_id, len(output_buffer.getvalue())))
-            except Exception as e:
-                errors.append((thread_id, e))
+# =============================================================================
+# 同一インスタンスの並列アクセステスト
+# =============================================================================
 
-        with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-            futures = [executor.submit(process_muxer, i) for i in range(NUM_THREADS)]
-            for f in futures:
-                f.result()
 
-        assert len(errors) == 0, f"Errors occurred: {errors}"
-        assert len(results) == NUM_THREADS
+def test_demuxer_concurrent_iteration():
+    """同一 Demuxer を複数スレッドから並列にイテレーション
 
-        # 全てのスレッドが有効な出力を生成したことを確認
-        for thread_id, size in results:
-            assert size > 0, f"Thread {thread_id}: empty output"
+    目的: ft_mutex によるロックが正しく機能し、全サンプルが漏れなく取得されることを確認
+    検証: 取得したサンプル数、タイムスタンプの重複なし、データ内容の整合性
+    """
+    mp4_buffer = create_test_mp4_buffer()
+    demuxer = Mp4FileDemuxer(mp4_buffer)
+    collected_samples = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(NUM_THREADS)
+
+    def iterate_demuxer(_thread_id: int):
+        barrier.wait()
+        while True:
+            sample = next(demuxer, None)
+            if sample is None:
+                break
+            # サンプルのデータを即座に読み取る (遅延読み込みをここで実行)
+            with lock:
+                collected_samples.append((sample.timestamp, sample.data))
+
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+        futures = [executor.submit(iterate_demuxer, i) for i in range(NUM_THREADS)]
+        for f in futures:
+            f.result()
+
+    demuxer.close()
+
+    # 全サンプルが取得されたことを確認
+    assert len(collected_samples) == SAMPLES_PER_FILE, (
+        f"Expected {SAMPLES_PER_FILE} samples, got {len(collected_samples)}"
+    )
+
+    # タイムスタンプの重複がないことを確認
+    timestamps = [ts for ts, _ in collected_samples]
+    assert len(set(timestamps)) == SAMPLES_PER_FILE, "Duplicate samples detected"
+
+    # タイムスタンプでソートしてデータ内容を検証
+    def get_timestamp(x):
+        return x[0]
+
+    collected_samples.sort(key=get_timestamp)
+    for i, (_, data) in enumerate(collected_samples):
+        expected = create_dummy_sample(i)
+        assert data == expected, f"Sample {i}: data corrupted"
