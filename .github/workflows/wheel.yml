@@ -38,8 +38,11 @@ jobs:
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
         run: |
+          uv sync --only-group test
           uv pip install wheelhouse/*.whl --reinstall
-          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
+          uv run --group test pytest --timeout=60
+        env:
+          NO_UV_SYNC: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -73,12 +76,17 @@ jobs:
         with:
           enable-cache: false
           python-version: ${{ matrix.python_version }}
+
       - name: Build wheel
         run: uv build --wheel
+
       - name: Install wheel and run tests
         run: |
+          uv sync --only-group test
           uv pip install dist/*.whl --reinstall
-          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
+          uv run --group test pytest --timeout=60
+        env:
+          NO_UV_SYNC: 1
       - name: Repair wheel with auditwheel
         shell: bash
         run: |
@@ -115,8 +123,11 @@ jobs:
       - name: Install wheel and run tests
         shell: bash
         run: |
+          uv sync --only-group test
           uv pip install wheelhouse/*.whl --reinstall
-          NO_UV_SYNC=1 uv run --group test pytest --timeout=60
+          uv run --group test pytest --timeout=60
+        env:
+          NO_UV_SYNC: 1
       - name: Upload Wheels
         uses: actions/upload-artifact@v6
         with:
