@@ -34,7 +34,6 @@ jobs:
         with:
           enable-cache: false
           python-version: ${{ matrix.python_version }}
-
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
@@ -74,7 +73,6 @@ jobs:
         with:
           enable-cache: false
           python-version: ${{ matrix.python_version }}
-
       - name: Build wheel
         run: uv build --wheel
       - name: Install wheel and run tests
@@ -111,10 +109,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Setup Python via uv
-        shell: bash
-        run: |
-          uv python pin ${{ matrix.python_version }}
+          python-version: ${{ matrix.python_version }}
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
