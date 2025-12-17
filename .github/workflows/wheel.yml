@@ -16,10 +16,10 @@ jobs:
     strategy:
       matrix:
         platform:
+          - name: macos-26_arm64
+            runs_on: macos-26
           - name: macos-15_arm64
             runs_on: macos-15
-          - name: macos-14_arm64
-            runs_on: macos-14
         python_version:
           - "3.14"
           - "3.14t"
@@ -33,10 +33,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: false
-      - run: |
-          uv python pin ${{ matrix.python_version }}
-      - name: Generate stub files
-        run: uv run --with mypy stubgen src/mp4 -o src
+          python-version: ${{ matrix.python_version }}
+
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
@@ -44,7 +42,7 @@ jobs:
           uv pip install wheelhouse/*.whl --reinstall
           NO_UV_SYNC=1 uv run --group test pytest --timeout=60
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
           path: wheelhouse/*.whl
@@ -77,8 +75,6 @@ jobs:
           enable-cache: false
           python-version: ${{ matrix.python_version }}
 
-      - name: Generate stub files
-        run: uv run --with mypy stubgen src/mp4 -o src
       - name: Build wheel
         run: uv build --wheel
       - name: Install wheel and run tests
@@ -119,8 +115,6 @@ jobs:
         shell: bash
         run: |
           uv python pin ${{ matrix.python_version }}
-      - name: Generate stub files
-        run: uv run --with mypy stubgen src/mp4 -o src
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
       - name: Install wheel and run tests
@@ -148,8 +142,8 @@ jobs:
           - name: ubuntu-24.04_arm64
           - name: ubuntu-22.04_x86_64
           - name: ubuntu-22.04_arm64
+          # - name: macos-26_arm64
           - name: macos-15_arm64
-          - name: macos-14_arm64
           - name: windows-2025_x86_64
         python_version:
           - "3.14"
@@ -178,12 +172,12 @@ jobs:
       - build_ubuntu
       - build_macos
       - build_windows
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: artifacts/
       - name: Create release files list
