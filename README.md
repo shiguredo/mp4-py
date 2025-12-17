@@ -24,18 +24,19 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 
 - macOS 26 arm64
 - macOS 15 arm64
-- macOS 14 arm64
 - Ubuntu 24.04 x86_64
 - Ubuntu 24.04 arm64
-
-### 対応予定プラットフォーム
-
+- Ubuntu 22.04 x86_64
+- Ubuntu 22.04 arm64
+- Windows Server 2025 x86_64
 - Windows 11 x86_64
 
 ## 対応 Python
 
 - 3.14
+- 3.14t
 - 3.13
+- 3.13t
 - 3.12
 
 ## インストール
@@ -46,9 +47,11 @@ uv add mp4-py
 
 ## 使い方（基本 API）
 
-- 提供: `Mp4FileDemuxer`, `Mp4FileMuxer`
+- `Mp4FileDemuxer` / `Mp4FileMuxer`
 - ビデオ/オーディオトラックの読み書きをサポート
-- VP8/VP9/AV1、H.264/H.265、Opus/AAC/FLAC コーデック対応
+- Opus / AAC / FLAC 音声コーデック対応
+- VP8 / VP9 / AV1 / H.264 / H.265 映像コーデック対応
+- Python [Free Threading](https://docs.python.org/3/howto/free-threading-python.html) 対応
 
 ### MP4 ファイルの読み込み
 
