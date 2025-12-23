@@ -72,8 +72,7 @@ def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
     corruption_offset=st.integers(min_value=0, max_value=9999),
     corruption_byte=st.integers(min_value=0, max_value=255),
 )
-# TODO: max_examples=100 にすると特定の破損パターンで demuxer がハングする
-@settings(max_examples=10, deadline=None)
+@settings(max_examples=100, deadline=None)
 def test_fuzzing_corrupted_mp4(
     valid_mp4: bytes,
     corruption_offset: int,
