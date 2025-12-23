@@ -791,7 +791,16 @@ class PyMp4FileDemuxer {
 
   // 入力データを供給する。EOF に達した場合は true を返す
   bool feed_required_input() {
+    // 無限ループ防止用のカウンター
+    constexpr int kMaxIterations = 10000;
+    int iteration_count = 0;
+
     while (true) {
+      if (++iteration_count > kMaxIterations) {
+        throw Mp4Exception(
+            "feed_required_input: too many iterations, possible infinite loop");
+      }
+
       uint64_t required_pos;
       int32_t required_size;
 

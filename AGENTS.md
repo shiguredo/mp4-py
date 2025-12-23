@@ -82,3 +82,9 @@
 - 明確な理由がない限りは try/expect をテストでは利用しないこと
 - class を使わないこと
 - lambda は使わないで def を使うこと
+
+### hypothesis
+
+- hypothesis の database (.hypothesis/examples/) をクリアしてテストを通すことは禁止
+  - database には failing case が保存されている
+  - バグを修正すること
