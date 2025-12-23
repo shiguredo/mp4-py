@@ -31,7 +31,7 @@ Discord = "https://discord.gg/shiguredo"
 
 [dependency-groups]
 dev = [{ include-group = "test" }, { include-group = "lint" }]
-test = ["pytest", "pytest-timeout"]
+test = ["pytest", "pytest-timeout", "hypothesis"]
 lint = ["ruff", "ty"]
 
 [tool.scikit-build]
