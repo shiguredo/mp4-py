@@ -601,6 +601,17 @@ class PyMp4DemuxSample {
 
   nb::bytes get_data() {
     if (!data_cache_) {
+      // サンプルサイズが合理的な範囲内かチェック
+      // Python の read() は ssize_t を期待するため、上限をチェックする
+      // また、1GB を超えるサンプルサイズは破損データとみなす
+      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
+      if (data_size_ > kMaxSampleSize) {
+        throw Mp4Exception(
+            "Sample data size too large (corrupted data?): " +
+            std::to_string(data_size_) + " bytes (max: " +
+            std::to_string(kMaxSampleSize) + " bytes)");
+      }
+
       input_stream_.attr("seek")(data_offset_);
       nb::object read_result = input_stream_.attr("read")(data_size_);
       data_cache_ = nb::cast<nb::bytes>(read_result);
@@ -745,6 +756,15 @@ class PyMp4FileDemuxer {
       }
       check_error(error);
 
+      // サンプルサイズが合理的な範囲内かチェック
+      // 破損データで巨大な値になることがあるため、早期にチェックする
+      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
+      if (raw_sample.data_size > kMaxSampleSize) {
+        throw Mp4Exception(
+            "Sample data size too large (corrupted data?): " +
+            std::to_string(raw_sample.data_size) + " bytes");
+      }
+
       PyMp4DemuxSample result;
       result.track.track_id = raw_sample.track->track_id;
       result.track.kind = track_kind_to_string(raw_sample.track->kind);
@@ -837,6 +857,18 @@ class PyMp4FileDemuxer {
 
       if (required_size == 0)
         return false;
+
+      // 要求位置が合理的な範囲内かチェック
+      // 破損データで巨大な値になることがあるため、早期にチェックする
+      // ssize_t の最大値を超える位置は Python の seek() でオーバーフローするため、
+      // ここでエラーにする
+      constexpr uint64_t kMaxSeekPosition =
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+      if (required_pos > kMaxSeekPosition) {
+        throw Mp4Exception(
+            "Required input position too large (corrupted data?): " +
+            std::to_string(required_pos));
+      }
 
       input_stream_.attr("seek")(required_pos);
 
