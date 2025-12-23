@@ -791,11 +791,38 @@ class PyMp4FileDemuxer {
 
   // 入力データを供給する。EOF に達した場合は true を返す
   bool feed_required_input() {
-    // 無限ループ防止用のカウンター
+    // =========================================================================
+    // 【ワークアラウンド】無限ループ防止
+    // =========================================================================
+    //
+    // 問題:
+    //   破損した MP4 データをパースする際、mp4-rust ライブラリが同じ位置の
+    //   データを繰り返し要求し続け、無限ループに陥ることがある。
+    //
+    // 原因:
+    //   mp4-rust の Mp4FileDemuxer::handle_input() は InputRequired エラーを
+    //   意図的に無視する設計になっている。これは「もっとデータが必要」という
+    //   正常なフローを示すためだが、同じ InputRequired が繰り返されるケースを
+    //   考慮していない。
+    //
+    //   また、C API の mp4_file_demuxer_handle_input() は常に MP4_ERROR_OK を
+    //   返すため、呼び出し元はエラーを検知できない。
+    //
+    // 本来の修正箇所:
+    //   mp4-rust 側で同じ入力要求が繰り返されたらエラーにすべき。
+    //   詳細は issues/infinite-loop-with-corrupted-mp4.md を参照。
+    //
+    // このワークアラウンド:
+    //   イテレーション回数をカウントし、上限を超えたら例外をスローする。
+    //   10000 回は正常な MP4 ファイルでは到達しない十分大きな値。
+    //
+    // =========================================================================
     constexpr int kMaxIterations = 10000;
     int iteration_count = 0;
 
     while (true) {
+      // 【ワークアラウンド】無限ループ検出
+      // mp4-rust 側のバグにより同じ位置を繰り返し要求されることがある
       if (++iteration_count > kMaxIterations) {
         throw Mp4Exception(
             "feed_required_input: too many iterations, possible infinite loop");
