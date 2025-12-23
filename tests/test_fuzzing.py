@@ -35,8 +35,8 @@ skip_fuzzing = pytest.mark.skipif(
 
 
 @skip_fuzzing
-@given(data=st.binary(min_size=0, max_size=100))
-@settings(max_examples=3, deadline=None)
+@given(data=st.binary(min_size=0, max_size=10000))
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_demuxer_random_bytes(data: bytes) -> None:
     """ランダムなバイナリデータを Demuxer に渡してクラッシュしないことを確認"""
     try:
@@ -48,8 +48,8 @@ def test_fuzzing_demuxer_random_bytes(data: bytes) -> None:
 
 
 @skip_fuzzing
-@given(data=st.binary(min_size=0, max_size=100))
-@settings(max_examples=3, deadline=None)
+@given(data=st.binary(min_size=0, max_size=10000))
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
     """MP4 ヘッダー付きのランダムデータを Demuxer に渡してクラッシュしないことを確認"""
     ftyp_header = bytes(
@@ -88,11 +88,11 @@ def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
 
 @skip_fuzzing
 @given(
-    valid_mp4=st.binary(min_size=50, max_size=100),
-    corruption_offset=st.integers(min_value=0, max_value=99),
+    valid_mp4=st.binary(min_size=100, max_size=5000),
+    corruption_offset=st.integers(min_value=0, max_value=9999),
     corruption_byte=st.integers(min_value=0, max_value=255),
 )
-@settings(max_examples=3, deadline=None)
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_corrupted_mp4(
     valid_mp4: bytes,
     corruption_offset: int,
@@ -131,9 +131,9 @@ def test_fuzzing_corrupted_mp4(
 @given(
     box_type=st.binary(min_size=4, max_size=4),
     box_size=st.integers(min_value=0, max_value=0xFFFFFFFF),
-    box_data=st.binary(min_size=0, max_size=100),
+    box_data=st.binary(min_size=0, max_size=5000),
 )
-@settings(max_examples=3, deadline=None)
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_random_box_structure(
     box_type: bytes,
     box_size: int,
@@ -151,19 +151,177 @@ def test_fuzzing_random_box_structure(
         pass
 
 
+# ボックスサイズの境界値
+BOX_SIZE_BOUNDARY_VALUES = [
+    0,  # サイズ 0（ファイル末尾まで）
+    1,  # 不正なサイズ
+    7,  # ヘッダより小さい
+    8,  # 最小の有効なボックス（ヘッダのみ）
+    9,  # ヘッダ + 1 バイト
+    0xFFFFFFFF,  # 拡張サイズを示す特殊値
+]
+
+# MP4 の重要なボックスタイプ
+MP4_BOX_TYPES = [
+    b"ftyp",  # ファイルタイプ
+    b"moov",  # ムービー（メタデータ）
+    b"mdat",  # メディアデータ
+    b"free",  # フリースペース
+    b"skip",  # スキップ
+    b"moof",  # ムービーフラグメント
+    b"mfra",  # ムービーフラグメントランダムアクセス
+    b"trak",  # トラック
+    b"tkhd",  # トラックヘッダ
+    b"mdia",  # メディア
+    b"minf",  # メディア情報
+    b"stbl",  # サンプルテーブル
+    b"stsd",  # サンプル記述
+    b"stts",  # タイムトゥサンプル
+    b"stsc",  # サンプルトゥチャンク
+    b"stsz",  # サンプルサイズ
+    b"stco",  # チャンクオフセット
+    b"co64",  # 64 ビットチャンクオフセット
+]
+
+
 @skip_fuzzing
 @given(
-    num_boxes=st.integers(min_value=1, max_value=3),
+    box_type=st.sampled_from(MP4_BOX_TYPES),
+    box_size=st.sampled_from(BOX_SIZE_BOUNDARY_VALUES),
+    box_data=st.binary(min_size=0, max_size=1000),
+)
+@settings(max_examples=10, deadline=None)
+def test_fuzzing_box_size_boundaries(
+    box_type: bytes,
+    box_size: int,
+    box_data: bytes,
+) -> None:
+    """ボックスサイズの境界値をテスト"""
+    size_bytes = box_size.to_bytes(4, "big")
+    mp4_data = size_bytes + box_type + box_data
+
+    try:
+        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
+        for sample in demuxer:
+            _ = sample.data
+    except (ValueError, RuntimeError, StopIteration):
+        pass
+
+
+@skip_fuzzing
+@given(
+    box_type=st.sampled_from(MP4_BOX_TYPES),
+    extended_size=st.integers(min_value=0, max_value=0xFFFFFFFFFFFFFFFF),
+    box_data=st.binary(min_size=0, max_size=1000),
+)
+@settings(max_examples=10, deadline=None)
+def test_fuzzing_extended_size_box(
+    box_type: bytes,
+    extended_size: int,
+    box_data: bytes,
+) -> None:
+    """拡張サイズ（64 ビット）のボックスをテスト"""
+    # size=1 は拡張サイズを使用することを示す
+    size_bytes = (1).to_bytes(4, "big")
+    extended_size_bytes = extended_size.to_bytes(8, "big")
+    mp4_data = size_bytes + box_type + extended_size_bytes + box_data
+
+    try:
+        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
+        for sample in demuxer:
+            _ = sample.data
+    except (ValueError, RuntimeError, StopIteration):
+        pass
+
+
+@skip_fuzzing
+@given(
+    box_data=st.binary(min_size=0, max_size=5000),
+)
+@settings(max_examples=10, deadline=None)
+def test_fuzzing_ftyp_with_random_body(box_data: bytes) -> None:
+    """ftyp ボックスにランダムなボディを付けてテスト"""
+    # ftyp ボックスの構造: size(4) + type(4) + major_brand(4) + minor_version(4) + compatible_brands(...)
+    size = 8 + len(box_data)
+    size_bytes = size.to_bytes(4, "big")
+    mp4_data = size_bytes + b"ftyp" + box_data
+
+    try:
+        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
+        for sample in demuxer:
+            _ = sample.data
+    except (ValueError, RuntimeError, StopIteration):
+        pass
+
+
+@skip_fuzzing
+@given(
+    moov_data=st.binary(min_size=0, max_size=5000),
+    mdat_data=st.binary(min_size=0, max_size=5000),
+)
+@settings(max_examples=10, deadline=None)
+def test_fuzzing_ftyp_moov_mdat_structure(
+    moov_data: bytes,
+    mdat_data: bytes,
+) -> None:
+    """ftyp + moov + mdat 構造をテスト"""
+    # 有効な ftyp
+    ftyp = bytes(
+        [
+            0x00,
+            0x00,
+            0x00,
+            0x14,  # size = 20
+            0x66,
+            0x74,
+            0x79,
+            0x70,  # "ftyp"
+            0x69,
+            0x73,
+            0x6F,
+            0x6D,  # major_brand = "isom"
+            0x00,
+            0x00,
+            0x02,
+            0x00,  # minor_version
+            0x69,
+            0x73,
+            0x6F,
+            0x6D,  # compatible_brand = "isom"
+        ]
+    )
+
+    # ランダムな moov
+    moov_size = (8 + len(moov_data)).to_bytes(4, "big")
+    moov = moov_size + b"moov" + moov_data
+
+    # ランダムな mdat
+    mdat_size = (8 + len(mdat_data)).to_bytes(4, "big")
+    mdat = mdat_size + b"mdat" + mdat_data
+
+    mp4_data = ftyp + moov + mdat
+
+    try:
+        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
+        for sample in demuxer:
+            _ = sample.data
+    except (ValueError, RuntimeError, StopIteration):
+        pass
+
+
+@skip_fuzzing
+@given(
+    num_boxes=st.integers(min_value=1, max_value=10),
     data=st.data(),
 )
-@settings(max_examples=3, deadline=None)
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
     """ネストしたボックス構造をランダムに生成"""
     mp4_data = b""
 
     for _ in range(num_boxes):
         box_type = data.draw(st.binary(min_size=4, max_size=4))
-        box_content = data.draw(st.binary(min_size=0, max_size=50))
+        box_content = data.draw(st.binary(min_size=0, max_size=1000))
         box_size = 8 + len(box_content)
         size_bytes = box_size.to_bytes(4, "big")
         mp4_data += size_bytes + box_type + box_content
@@ -178,10 +336,10 @@ def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
 
 @skip_fuzzing
 @given(
-    sample_count=st.integers(min_value=1, max_value=3),
+    sample_count=st.integers(min_value=1, max_value=10),
     data=st.data(),
 )
-@settings(max_examples=3, deadline=None)
+@settings(max_examples=10, deadline=None)
 def test_fuzzing_muxer_random_data(sample_count: int, data: st.DataObject) -> None:
     """Muxer にランダムなサンプルデータを渡してクラッシュしないことを確認"""
     output_buffer = io.BytesIO()
@@ -194,7 +352,7 @@ def test_fuzzing_muxer_random_data(sample_count: int, data: st.DataObject) -> No
                 width=data.draw(st.integers(min_value=1, max_value=4096)),
                 height=data.draw(st.integers(min_value=1, max_value=4096)),
             )
-            sample_data = data.draw(st.binary(min_size=1, max_size=100))
+            sample_data = data.draw(st.binary(min_size=1, max_size=5000))
 
             mux_sample = Mp4MuxSample(
                 track_kind="video",
