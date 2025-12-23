@@ -2,15 +2,10 @@
 hypothesis を使った fuzzing テスト
 
 ランダムなデータを入力してクラッシュしないことを確認する。
-
-実行方法:
-    pytest tests/test_fuzzing.py --run-fuzzing
 """
 
 import io
-import os
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -22,19 +17,6 @@ from mp4 import (
 )
 
 
-# 環境変数または --run-fuzzing オプションで有効化
-def pytest_configure(config):
-    config.addinivalue_line("markers", "fuzzing: mark test as fuzzing test")
-
-
-# fuzzing テストをスキップするかどうか
-skip_fuzzing = pytest.mark.skipif(
-    os.environ.get("RUN_FUZZING", "0") != "1",
-    reason="fuzzing テストはデフォルトでスキップ。RUN_FUZZING=1 で有効化。",
-)
-
-
-@skip_fuzzing
 @given(data=st.binary(min_size=0, max_size=10000))
 @settings(max_examples=10, deadline=None)
 def test_fuzzing_demuxer_random_bytes(data: bytes) -> None:
@@ -47,7 +29,6 @@ def test_fuzzing_demuxer_random_bytes(data: bytes) -> None:
         pass
 
 
-@skip_fuzzing
 @given(data=st.binary(min_size=0, max_size=10000))
 @settings(max_examples=10, deadline=None)
 def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
@@ -86,7 +67,6 @@ def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
         pass
 
 
-@skip_fuzzing
 @given(
     valid_mp4=st.binary(min_size=100, max_size=5000),
     corruption_offset=st.integers(min_value=0, max_value=9999),
@@ -127,7 +107,6 @@ def test_fuzzing_corrupted_mp4(
         pass
 
 
-@skip_fuzzing
 @given(
     box_type=st.binary(min_size=4, max_size=4),
     box_size=st.integers(min_value=0, max_value=0xFFFFFFFF),
@@ -184,7 +163,6 @@ MP4_BOX_TYPES = [
 ]
 
 
-@skip_fuzzing
 @given(
     box_type=st.sampled_from(MP4_BOX_TYPES),
     box_size=st.sampled_from(BOX_SIZE_BOUNDARY_VALUES),
@@ -208,7 +186,6 @@ def test_fuzzing_box_size_boundaries(
         pass
 
 
-@skip_fuzzing
 @given(
     box_type=st.sampled_from(MP4_BOX_TYPES),
     extended_size=st.integers(min_value=0, max_value=0xFFFFFFFFFFFFFFFF),
@@ -234,7 +211,6 @@ def test_fuzzing_extended_size_box(
         pass
 
 
-@skip_fuzzing
 @given(
     box_data=st.binary(min_size=0, max_size=5000),
 )
@@ -254,7 +230,6 @@ def test_fuzzing_ftyp_with_random_body(box_data: bytes) -> None:
         pass
 
 
-@skip_fuzzing
 @given(
     moov_data=st.binary(min_size=0, max_size=5000),
     mdat_data=st.binary(min_size=0, max_size=5000),
@@ -309,7 +284,6 @@ def test_fuzzing_ftyp_moov_mdat_structure(
         pass
 
 
-@skip_fuzzing
 @given(
     num_boxes=st.integers(min_value=1, max_value=10),
     data=st.data(),
@@ -334,7 +308,6 @@ def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
         pass
 
 
-@skip_fuzzing
 @given(
     sample_count=st.integers(min_value=1, max_value=10),
     data=st.data(),
