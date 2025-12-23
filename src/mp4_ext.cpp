@@ -1608,7 +1608,9 @@ NB_MODULE(mp4_ext, m) {
       .def(nb::init<nb::object>(), "source"_a)
       .def("close", &PyMp4FileDemuxer::close)
       .def_prop_ro("tracks", &PyMp4FileDemuxer::get_tracks)
-      .def("__enter__", &PyMp4FileDemuxer::enter)
+      .def(
+          "__enter__", [](PyMp4FileDemuxer& self) -> PyMp4FileDemuxer& { return self; },
+          nb::rv_policy::reference)
       .def("__exit__", &PyMp4FileDemuxer::exit, "exc_type"_a.none(),
            "exc_val"_a.none(), "exc_tb"_a.none())
       .def("__iter__", &PyMp4FileDemuxer::iter, nb::rv_policy::reference)
@@ -1646,7 +1648,9 @@ NB_MODULE(mp4_ext, m) {
       .def("close", &PyMp4FileMuxer::close)
       .def("append_sample", &PyMp4FileMuxer::append_sample, "sample"_a)
       .def("finalize", &PyMp4FileMuxer::finalize)
-      .def("__enter__", &PyMp4FileMuxer::enter)
+      .def(
+          "__enter__", [](PyMp4FileMuxer& self) -> PyMp4FileMuxer& { return self; },
+          nb::rv_policy::reference)
       .def("__exit__", &PyMp4FileMuxer::exit, "exc_type"_a.none(),
            "exc_val"_a.none(), "exc_tb"_a.none());
 }
