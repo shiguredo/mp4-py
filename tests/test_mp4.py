@@ -1,5 +1,6 @@
 import io
 
+import pytest
 
 from mp4 import (
     Mp4FileDemuxer,
@@ -432,3 +433,26 @@ def test_multiple_samples_with_faststart():
     for i, sample in enumerate(demuxed_samples):
         expected_keyframe = i % 2 == 0
         assert sample.keyframe == expected_keyframe
+
+
+def test_demuxer_with_invalid_data():
+    """無効なデータを渡した場合のテスト"""
+    # ランダムなバイナリデータ（MP4 ではない）
+    invalid_data = b"\x00\x00\x00\x10abcd12345678"
+    buffer = io.BytesIO(invalid_data)
+
+    demuxer = Mp4FileDemuxer(buffer)
+
+    # 無効なデータの場合、空のリストになる（ブロックしないこと）
+    samples = list(demuxer)
+    assert samples == []
+
+
+def test_demuxer_with_empty_data():
+    """空のデータを渡した場合のテスト"""
+    buffer = io.BytesIO(b"")
+    demuxer = Mp4FileDemuxer(buffer)
+
+    # 空のファイルの場合、空のリストになる（ブロックしないこと）
+    samples = list(demuxer)
+    assert samples == []

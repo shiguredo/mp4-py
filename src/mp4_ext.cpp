@@ -697,7 +697,10 @@ class PyMp4FileDemuxer {
       Mp4Error error =
           mp4_file_demuxer_get_tracks(demuxer_, &tracks, &track_count);
       if (error == MP4_ERROR_INPUT_REQUIRED) {
-        feed_required_input();
+        bool eof = feed_required_input();
+        if (eof) {
+          throw Mp4Exception("Unexpected end of file while parsing MP4");
+        }
         continue;
       }
       check_error(error);
@@ -731,7 +734,10 @@ class PyMp4FileDemuxer {
       Mp4DemuxSample raw_sample;
       Mp4Error error = mp4_file_demuxer_next_sample(demuxer_, &raw_sample);
       if (error == MP4_ERROR_INPUT_REQUIRED) {
-        feed_required_input();
+        bool eof = feed_required_input();
+        if (eof) {
+          throw nb::stop_iteration();
+        }
         continue;
       }
       if (error == MP4_ERROR_NO_MORE_SAMPLES) {
@@ -783,7 +789,8 @@ class PyMp4FileDemuxer {
     }
   }
 
-  void feed_required_input() {
+  // 入力データを供給する。EOF に達した場合は true を返す
+  bool feed_required_input() {
     while (true) {
       uint64_t required_pos;
       int32_t required_size;
@@ -793,7 +800,7 @@ class PyMp4FileDemuxer {
       check_error(error);
 
       if (required_size == 0)
-        break;
+        return false;
 
       input_stream_.attr("seek")(required_pos);
 
@@ -811,6 +818,11 @@ class PyMp4FileDemuxer {
       error = mp4_file_demuxer_handle_input(demuxer_, required_pos, data_ptr,
                                             static_cast<uint32_t>(data_len));
       check_error(error);
+
+      // 要求サイズより少ないデータしか読めなかった場合（EOF または truncated）
+      if (required_size > 0 && static_cast<int32_t>(data_len) < required_size) {
+        return true;
+      }
     }
   }
 };
