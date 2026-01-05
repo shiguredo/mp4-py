@@ -24,6 +24,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
 ]
 requires-python = ">=3.12"
+dependencies = []
 
 [project.urls]
 Source = "https://github.com/shiguredo/mp4-py"
@@ -31,7 +32,7 @@ Discord = "https://discord.gg/shiguredo"
 
 [dependency-groups]
 dev = [{ include-group = "test" }, { include-group = "lint" }]
-test = ["pytest", "pytest-timeout"]
+test = ["pytest", "pytest-timeout", "hypothesis"]
 lint = ["ruff", "ty"]
 
 [tool.scikit-build]

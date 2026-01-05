@@ -9,9 +9,10 @@ _install/
 dist/
 wheels/
 *.egg-info
-.venv
-.ruff_cache
-.mypy_cache
+.venv/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
 
 # macos
 .DS_Store

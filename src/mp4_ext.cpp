@@ -601,6 +601,17 @@ class PyMp4DemuxSample {
 
   nb::bytes get_data() {
     if (!data_cache_) {
+      // サンプルサイズが合理的な範囲内かチェック
+      // Python の read() は ssize_t を期待するため、上限をチェックする
+      // また、1GB を超えるサンプルサイズは破損データとみなす
+      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
+      if (data_size_ > kMaxSampleSize) {
+        throw Mp4Exception(
+            "Sample data size too large (corrupted data?): " +
+            std::to_string(data_size_) + " bytes (max: " +
+            std::to_string(kMaxSampleSize) + " bytes)");
+      }
+
       input_stream_.attr("seek")(data_offset_);
       nb::object read_result = input_stream_.attr("read")(data_size_);
       data_cache_ = nb::cast<nb::bytes>(read_result);
@@ -697,7 +708,10 @@ class PyMp4FileDemuxer {
       Mp4Error error =
           mp4_file_demuxer_get_tracks(demuxer_, &tracks, &track_count);
       if (error == MP4_ERROR_INPUT_REQUIRED) {
-        feed_required_input();
+        bool eof = feed_required_input();
+        if (eof) {
+          throw Mp4Exception("Unexpected end of file while parsing MP4");
+        }
         continue;
       }
       check_error(error);
@@ -731,13 +745,25 @@ class PyMp4FileDemuxer {
       Mp4DemuxSample raw_sample;
       Mp4Error error = mp4_file_demuxer_next_sample(demuxer_, &raw_sample);
       if (error == MP4_ERROR_INPUT_REQUIRED) {
-        feed_required_input();
+        bool eof = feed_required_input();
+        if (eof) {
+          throw nb::stop_iteration();
+        }
         continue;
       }
       if (error == MP4_ERROR_NO_MORE_SAMPLES) {
         throw nb::stop_iteration();
       }
       check_error(error);
+
+      // サンプルサイズが合理的な範囲内かチェック
+      // 破損データで巨大な値になることがあるため、早期にチェックする
+      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
+      if (raw_sample.data_size > kMaxSampleSize) {
+        throw Mp4Exception(
+            "Sample data size too large (corrupted data?): " +
+            std::to_string(raw_sample.data_size) + " bytes");
+      }
 
       PyMp4DemuxSample result;
       result.track.track_id = raw_sample.track->track_id;
@@ -783,8 +809,45 @@ class PyMp4FileDemuxer {
     }
   }
 
-  void feed_required_input() {
+  // 入力データを供給する。EOF に達した場合は true を返す
+  bool feed_required_input() {
+    // =========================================================================
+    // 【ワークアラウンド】無限ループ防止
+    // =========================================================================
+    //
+    // 問題:
+    //   破損した MP4 データをパースする際、mp4-rust ライブラリが同じ位置の
+    //   データを繰り返し要求し続け、無限ループに陥ることがある。
+    //
+    // 原因:
+    //   mp4-rust の Mp4FileDemuxer::handle_input() は InputRequired エラーを
+    //   意図的に無視する設計になっている。これは「もっとデータが必要」という
+    //   正常なフローを示すためだが、同じ InputRequired が繰り返されるケースを
+    //   考慮していない。
+    //
+    //   また、C API の mp4_file_demuxer_handle_input() は常に MP4_ERROR_OK を
+    //   返すため、呼び出し元はエラーを検知できない。
+    //
+    // 本来の修正箇所:
+    //   mp4-rust 側で同じ入力要求が繰り返されたらエラーにすべき。
+    //   詳細は issues/infinite-loop-with-corrupted-mp4.md を参照。
+    //
+    // このワークアラウンド:
+    //   イテレーション回数をカウントし、上限を超えたら例外をスローする。
+    //   10000 回は正常な MP4 ファイルでは到達しない十分大きな値。
+    //
+    // =========================================================================
+    constexpr int kMaxIterations = 10000;
+    int iteration_count = 0;
+
     while (true) {
+      // 【ワークアラウンド】無限ループ検出
+      // mp4-rust 側のバグにより同じ位置を繰り返し要求されることがある
+      if (++iteration_count > kMaxIterations) {
+        throw Mp4Exception(
+            "feed_required_input: too many iterations, possible infinite loop");
+      }
+
       uint64_t required_pos;
       int32_t required_size;
 
@@ -793,7 +856,19 @@ class PyMp4FileDemuxer {
       check_error(error);
 
       if (required_size == 0)
-        break;
+        return false;
+
+      // 要求位置が合理的な範囲内かチェック
+      // 破損データで巨大な値になることがあるため、早期にチェックする
+      // ssize_t の最大値を超える位置は Python の seek() でオーバーフローするため、
+      // ここでエラーにする
+      constexpr uint64_t kMaxSeekPosition =
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+      if (required_pos > kMaxSeekPosition) {
+        throw Mp4Exception(
+            "Required input position too large (corrupted data?): " +
+            std::to_string(required_pos));
+      }
 
       input_stream_.attr("seek")(required_pos);
 
@@ -811,6 +886,11 @@ class PyMp4FileDemuxer {
       error = mp4_file_demuxer_handle_input(demuxer_, required_pos, data_ptr,
                                             static_cast<uint32_t>(data_len));
       check_error(error);
+
+      // 要求サイズより少ないデータしか読めなかった場合（EOF または truncated）
+      if (required_size > 0 && static_cast<int32_t>(data_len) < required_size) {
+        return true;
+      }
     }
   }
 };
@@ -1609,7 +1689,8 @@ NB_MODULE(mp4_ext, m) {
       .def("close", &PyMp4FileDemuxer::close)
       .def_prop_ro("tracks", &PyMp4FileDemuxer::get_tracks)
       .def(
-          "__enter__", [](PyMp4FileDemuxer& self) -> PyMp4FileDemuxer& { return self; },
+          "__enter__",
+          [](PyMp4FileDemuxer& self) -> PyMp4FileDemuxer& { return self; },
           nb::rv_policy::reference)
       .def("__exit__", &PyMp4FileDemuxer::exit, "exc_type"_a.none(),
            "exc_val"_a.none(), "exc_tb"_a.none())
@@ -1649,7 +1730,8 @@ NB_MODULE(mp4_ext, m) {
       .def("append_sample", &PyMp4FileMuxer::append_sample, "sample"_a)
       .def("finalize", &PyMp4FileMuxer::finalize)
       .def(
-          "__enter__", [](PyMp4FileMuxer& self) -> PyMp4FileMuxer& { return self; },
+          "__enter__",
+          [](PyMp4FileMuxer& self) -> PyMp4FileMuxer& { return self; },
           nb::rv_policy::reference)
       .def("__exit__", &PyMp4FileMuxer::exit, "exc_type"_a.none(),
            "exc_val"_a.none(), "exc_tb"_a.none());
