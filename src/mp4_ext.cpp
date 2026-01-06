@@ -20,6 +20,12 @@
 namespace nb = nanobind;
 using namespace nb::literals;
 
+// ===== 定数 =====
+
+// 破損データ検出のための最大サンプルサイズ (1GB)
+// この値を超えるサンプルサイズは破損データとみなしてエラーにする
+constexpr uint64_t kMaxSampleSize = 1ULL << 30;
+
 // ===== 例外クラス =====
 
 class Mp4Exception : public std::runtime_error {
@@ -710,10 +716,6 @@ class PyMp4DemuxSample {
 
   nb::bytes get_data() {
     if (!data_cache_) {
-      // サンプルサイズが合理的な範囲内かチェック
-      // Python の read() は ssize_t を期待するため、上限をチェックする
-      // また、1GB を超えるサンプルサイズは破損データとみなす
-      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
       if (data_size_ > kMaxSampleSize) {
         throw Mp4Exception("Sample data size too large (corrupted data?): " +
                            std::to_string(data_size_) + " bytes (max: " +
@@ -864,9 +866,7 @@ class PyMp4FileDemuxer {
       }
       check_error(error);
 
-      // サンプルサイズが合理的な範囲内かチェック
       // 破損データで巨大な値になることがあるため、早期にチェックする
-      constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
       if (raw_sample.data_size > kMaxSampleSize) {
         throw Mp4Exception("Sample data size too large (corrupted data?): " +
                            std::to_string(raw_sample.data_size) + " bytes");
