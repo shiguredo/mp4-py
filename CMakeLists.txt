@@ -19,23 +19,23 @@ else()
   set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
-# deps.json からバージョン情報を読み込む
+# deps.json から依存情報を読み込む
 file(READ "${PROJECT_ROOT}/deps.json" DEPS_JSON)
-string(JSON MP4_VERSION GET ${DEPS_JSON} "mp4-rust" "version")
-string(JSON MP4_REPOSITORY GET ${DEPS_JSON} "mp4-rust" "repository")
+string(JSON MP4_TAG GET ${DEPS_JSON} "mp4-rust" "tag")
+string(JSON MP4_URL GET ${DEPS_JSON} "mp4-rust" "url")
 
 # mp4-rust GitHub Release アーティファクトの設定
-set(MP4_BASE_URL "${MP4_REPOSITORY}/releases/download/${MP4_VERSION}")
+set(MP4_BASE_URL "${MP4_URL}/releases/download/${MP4_TAG}")
 
 # プラットフォーム別のアーティファクト名を決定
 if(APPLE)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-    set(MP4_ARTIFACT "mp4-${MP4_VERSION}_macos-26_arm64.tar.gz")
+    set(MP4_ARTIFACT "mp4-${MP4_TAG}_macos-26_arm64.tar.gz")
   else()
     message(FATAL_ERROR "macOS x86_64 は mp4-rust リリースでサポートされていません")
   endif()
 elseif(WIN32)
-  set(MP4_ARTIFACT "mp4-${MP4_VERSION}_windows-2025_x86_64.zip")
+  set(MP4_ARTIFACT "mp4-${MP4_TAG}_windows-2025_x86_64.zip")
 elseif(UNIX AND NOT APPLE)
   # /etc/os-release から Ubuntu バージョンを検出
   if(NOT EXISTS "/etc/os-release")
@@ -55,9 +55,9 @@ elseif(UNIX AND NOT APPLE)
   endif()
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-    set(MP4_ARTIFACT "mp4-${MP4_VERSION}_ubuntu-${UBUNTU_VERSION}_arm64.tar.gz")
+    set(MP4_ARTIFACT "mp4-${MP4_TAG}_ubuntu-${UBUNTU_VERSION}_arm64.tar.gz")
   else()
-    set(MP4_ARTIFACT "mp4-${MP4_VERSION}_ubuntu-${UBUNTU_VERSION}_x86_64.tar.gz")
+    set(MP4_ARTIFACT "mp4-${MP4_TAG}_ubuntu-${UBUNTU_VERSION}_x86_64.tar.gz")
   endif()
 endif()
 

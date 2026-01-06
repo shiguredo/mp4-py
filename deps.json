@@ -1,6 +1,6 @@
 {
   "mp4-rust": {
-    "version": "2026.1.0",
-    "repository": "https://github.com/shiguredo/mp4-rust"
+    "tag": "2026.1.0",
+    "url": "https://github.com/shiguredo/mp4-rust"
   }
 }
