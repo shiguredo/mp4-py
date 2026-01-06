@@ -65,3 +65,6 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Property-Based Testing (PBT) は prop_ prefix を使用する
+python_files = ["test_*.py", "prop_*.py"]
+python_functions = ["test_*", "prop_*"]

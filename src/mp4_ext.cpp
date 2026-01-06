@@ -244,6 +244,113 @@ struct PyMp4SampleEntryHev1 {
   }
 };
 
+struct PyMp4SampleEntryHvc1 {
+  uint16_t width = 0;
+  uint16_t height = 0;
+  uint8_t general_profile_space = 0;
+  uint8_t general_tier_flag = 0;
+  uint8_t general_profile_idc = 0;
+  uint32_t general_profile_compatibility_flags = 0;
+  uint64_t general_constraint_indicator_flags = 0;
+  uint8_t general_level_idc = 0;
+  uint8_t chroma_format_idc = 1;
+  uint8_t bit_depth_luma_minus8 = 0;
+  uint8_t bit_depth_chroma_minus8 = 0;
+  uint16_t min_spatial_segmentation_idc = 0;
+  uint8_t parallelism_type = 0;
+  uint16_t avg_frame_rate = 0;
+  uint8_t constant_frame_rate = 0;
+  uint8_t num_temporal_layers = 0;
+  uint8_t temporal_id_nested = 0;
+  uint8_t length_size_minus_one = 3;
+  std::vector<uint8_t> nalu_types;
+  std::vector<nb::bytes> nalu_data;
+
+  PyMp4SampleEntryHvc1() = default;
+  PyMp4SampleEntryHvc1(uint16_t width_,
+                       uint16_t height_,
+                       uint8_t general_profile_idc_,
+                       uint8_t general_level_idc_,
+                       const std::vector<uint8_t>& nalu_types_,
+                       const std::vector<nb::bytes>& nalu_data_,
+                       uint8_t general_profile_space_,
+                       uint8_t general_tier_flag_,
+                       uint32_t general_profile_compatibility_flags_,
+                       uint64_t general_constraint_indicator_flags_,
+                       uint8_t chroma_format_idc_,
+                       uint8_t bit_depth_luma_minus8_,
+                       uint8_t bit_depth_chroma_minus8_,
+                       uint16_t min_spatial_segmentation_idc_,
+                       uint8_t parallelism_type_,
+                       uint16_t avg_frame_rate_,
+                       uint8_t constant_frame_rate_,
+                       uint8_t num_temporal_layers_,
+                       uint8_t temporal_id_nested_,
+                       uint8_t length_size_minus_one_)
+      : width(width_),
+        height(height_),
+        general_profile_space(general_profile_space_),
+        general_tier_flag(general_tier_flag_),
+        general_profile_idc(general_profile_idc_),
+        general_profile_compatibility_flags(
+            general_profile_compatibility_flags_),
+        general_constraint_indicator_flags(general_constraint_indicator_flags_),
+        general_level_idc(general_level_idc_),
+        chroma_format_idc(chroma_format_idc_),
+        bit_depth_luma_minus8(bit_depth_luma_minus8_),
+        bit_depth_chroma_minus8(bit_depth_chroma_minus8_),
+        min_spatial_segmentation_idc(min_spatial_segmentation_idc_),
+        parallelism_type(parallelism_type_),
+        avg_frame_rate(avg_frame_rate_),
+        constant_frame_rate(constant_frame_rate_),
+        num_temporal_layers(num_temporal_layers_),
+        temporal_id_nested(temporal_id_nested_),
+        length_size_minus_one(length_size_minus_one_),
+        nalu_types(nalu_types_),
+        nalu_data(nalu_data_) {}
+
+  static PyMp4SampleEntryHvc1 from_raw(const Mp4SampleEntryHvc1& raw) {
+    PyMp4SampleEntryHvc1 result;
+    result.width = raw.width;
+    result.height = raw.height;
+    result.general_profile_space = raw.general_profile_space;
+    result.general_tier_flag = raw.general_tier_flag;
+    result.general_profile_idc = raw.general_profile_idc;
+    result.general_profile_compatibility_flags =
+        raw.general_profile_compatibility_flags;
+    result.general_constraint_indicator_flags =
+        raw.general_constraint_indicator_flags;
+    result.general_level_idc = raw.general_level_idc;
+    result.chroma_format_idc = raw.chroma_format_idc;
+    result.bit_depth_luma_minus8 = raw.bit_depth_luma_minus8;
+    result.bit_depth_chroma_minus8 = raw.bit_depth_chroma_minus8;
+    result.min_spatial_segmentation_idc = raw.min_spatial_segmentation_idc;
+    result.parallelism_type = raw.parallelism_type;
+    result.avg_frame_rate = raw.avg_frame_rate;
+    result.constant_frame_rate = raw.constant_frame_rate;
+    result.num_temporal_layers = raw.num_temporal_layers;
+    result.temporal_id_nested = raw.temporal_id_nested;
+    result.length_size_minus_one = raw.length_size_minus_one;
+
+    // NALU データを抽出
+    if (raw.nalu_array_count > 0 && raw.nalu_types) {
+      uint32_t offset = 0;
+      for (uint32_t i = 0; i < raw.nalu_array_count; i++) {
+        uint32_t count = raw.nalu_counts ? raw.nalu_counts[i] : 0;
+        for (uint32_t j = 0; j < count; j++) {
+          result.nalu_types.push_back(raw.nalu_types[i]);
+          uint32_t size = raw.nalu_sizes[offset + j];
+          result.nalu_data.push_back(nb::bytes(
+              reinterpret_cast<const char*>(raw.nalu_data[offset + j]), size));
+        }
+        offset += count;
+      }
+    }
+
+    return result;
+  }
+};
+
 struct PyMp4SampleEntryVp08 {
   uint16_t width = 0;
   uint16_t height = 0;
@@ -519,6 +626,8 @@ static nb::object sample_entry_from_raw(const Mp4SampleEntry* raw) {
       return nb::cast(PyMp4SampleEntryAvc1::from_raw(raw->data.avc1));
     case MP4_SAMPLE_ENTRY_KIND_HEV1:
       return nb::cast(PyMp4SampleEntryHev1::from_raw(raw->data.hev1));
+    case MP4_SAMPLE_ENTRY_KIND_HVC1:
+      return nb::cast(PyMp4SampleEntryHvc1::from_raw(raw->data.hvc1));
     case MP4_SAMPLE_ENTRY_KIND_VP08:
       return nb::cast(PyMp4SampleEntryVp08::from_raw(raw->data.vp08));
     case MP4_SAMPLE_ENTRY_KIND_VP09:
@@ -606,10 +715,9 @@ class PyMp4DemuxSample {
       // また、1GB を超えるサンプルサイズは破損データとみなす
       constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
       if (data_size_ > kMaxSampleSize) {
-        throw Mp4Exception(
-            "Sample data size too large (corrupted data?): " +
-            std::to_string(data_size_) + " bytes (max: " +
-            std::to_string(kMaxSampleSize) + " bytes)");
+        throw Mp4Exception("Sample data size too large (corrupted data?): " +
+                           std::to_string(data_size_) + " bytes (max: " +
+                           std::to_string(kMaxSampleSize) + " bytes)");
       }
 
       input_stream_.attr("seek")(data_offset_);
@@ -760,9 +868,8 @@ class PyMp4FileDemuxer {
       // 破損データで巨大な値になることがあるため、早期にチェックする
       constexpr uint64_t kMaxSampleSize = 1ULL << 30;  // 1GB
       if (raw_sample.data_size > kMaxSampleSize) {
-        throw Mp4Exception(
-            "Sample data size too large (corrupted data?): " +
-            std::to_string(raw_sample.data_size) + " bytes");
+        throw Mp4Exception("Sample data size too large (corrupted data?): " +
+                           std::to_string(raw_sample.data_size) + " bytes");
       }
 
       PyMp4DemuxSample result;
@@ -980,6 +1087,8 @@ class SampleEntryConverter {
       convert_avc1(nb::cast<PyMp4SampleEntryAvc1&>(entry));
     } else if (nb::isinstance<PyMp4SampleEntryHev1>(entry)) {
       convert_hev1(nb::cast<PyMp4SampleEntryHev1&>(entry));
+    } else if (nb::isinstance<PyMp4SampleEntryHvc1>(entry)) {
+      convert_hvc1(nb::cast<PyMp4SampleEntryHvc1&>(entry));
     } else if (nb::isinstance<PyMp4SampleEntryVp08>(entry)) {
       convert_vp08(nb::cast<PyMp4SampleEntryVp08&>(entry));
     } else if (nb::isinstance<PyMp4SampleEntryVp09>(entry)) {
@@ -1097,6 +1206,60 @@ class SampleEntryConverter {
     hev1.nalu_data =
         nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
     hev1.nalu_sizes =
+        nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
+  }
+
+  void convert_hvc1(PyMp4SampleEntryHvc1& entry) {
+    raw_entry.kind = MP4_SAMPLE_ENTRY_KIND_HVC1;
+    auto& hvc1 = raw_entry.data.hvc1;
+
+    hvc1.width = entry.width;
+    hvc1.height = entry.height;
+    hvc1.general_profile_space = entry.general_profile_space;
+    hvc1.general_tier_flag = entry.general_tier_flag;
+    hvc1.general_profile_idc = entry.general_profile_idc;
+    hvc1.general_profile_compatibility_flags =
+        entry.general_profile_compatibility_flags;
+    hvc1.general_constraint_indicator_flags =
+        entry.general_constraint_indicator_flags;
+    hvc1.general_level_idc = entry.general_level_idc;
+    hvc1.chroma_format_idc = entry.chroma_format_idc;
+    hvc1.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8;
+    hvc1.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8;
+    hvc1.min_spatial_segmentation_idc = entry.min_spatial_segmentation_idc;
+    hvc1.parallelism_type = entry.parallelism_type;
+    hvc1.avg_frame_rate = entry.avg_frame_rate;
+    hvc1.constant_frame_rate = entry.constant_frame_rate;
+    hvc1.num_temporal_layers = entry.num_temporal_layers;
+    hvc1.temporal_id_nested = entry.temporal_id_nested;
+    hvc1.length_size_minus_one = entry.length_size_minus_one;
+
+    // nalu_types と nalu_data の長さが等しいことをチェック
+    if (entry.nalu_types.size() != entry.nalu_data.size()) {
+      throw Mp4Exception("nalu_types and nalu_data must have the same length");
+    }
+
+    // NALU データ
+    nalu_types_buffer = entry.nalu_types;
+    nalu_counts_buffer.resize(entry.nalu_types.size(), 1);
+
+    for (auto& nalu : entry.nalu_data) {
+      const auto* ptr = static_cast<const uint8_t*>(nalu.data());
+      nalu_data_buffers.emplace_back(ptr, ptr + nalu.size());
+      nalu_sizes_buffer.push_back(static_cast<uint32_t>(nalu.size()));
+    }
+    for (auto& buf : nalu_data_buffers) {
+      nalu_data_pointers.push_back(buf.data());
+    }
+
+    hvc1.nalu_array_count = static_cast<uint32_t>(entry.nalu_types.size());
+    hvc1.nalu_types =
+        nalu_types_buffer.empty() ? nullptr : nalu_types_buffer.data();
+    hvc1.nalu_counts =
+        nalu_counts_buffer.empty() ? nullptr : nalu_counts_buffer.data();
+    hvc1.nalu_data =
+        nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
+    hvc1.nalu_sizes =
         nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
   }
 
@@ -1542,6 +1705,92 @@ NB_MODULE(mp4_ext, m) {
               &PyMp4SampleEntryHev1::length_size_minus_one)
       .def_rw("nalu_types", &PyMp4SampleEntryHev1::nalu_types)
       .def_rw("nalu_data", &PyMp4SampleEntryHev1::nalu_data);
+
+  nb::class_<PyMp4SampleEntryHvc1>(m, "Mp4SampleEntryHvc1")
+      .def(nb::init<>())
+      .def(
+          "__init__",
+          [](PyMp4SampleEntryHvc1* self, uint16_t width, uint16_t height,
+             uint8_t general_profile_idc, uint8_t general_level_idc,
+             nb::object nalu_types_obj, nb::object nalu_data_obj,
+             uint8_t general_profile_space, uint8_t general_tier_flag,
+             uint32_t general_profile_compatibility_flags,
+             uint64_t general_constraint_indicator_flags,
+             uint8_t chroma_format_idc, uint8_t bit_depth_luma_minus8,
+             uint8_t bit_depth_chroma_minus8,
+             uint16_t min_spatial_segmentation_idc, uint8_t parallelism_type,
+             uint16_t avg_frame_rate, uint8_t constant_frame_rate,
+             uint8_t num_temporal_layers, uint8_t temporal_id_nested,
+             uint8_t length_size_minus_one) {
+            new (self) PyMp4SampleEntryHvc1();
+            self->width = width;
+            self->height = height;
+            self->general_profile_space = general_profile_space;
+            self->general_tier_flag = general_tier_flag;
+            self->general_profile_idc = general_profile_idc;
+            self->general_profile_compatibility_flags =
+                general_profile_compatibility_flags;
+            self->general_constraint_indicator_flags =
+                general_constraint_indicator_flags;
+            self->general_level_idc = general_level_idc;
+            self->chroma_format_idc = chroma_format_idc;
+            self->bit_depth_luma_minus8 = bit_depth_luma_minus8;
+            self->bit_depth_chroma_minus8 = bit_depth_chroma_minus8;
+            self->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
+            self->parallelism_type = parallelism_type;
+            self->avg_frame_rate = avg_frame_rate;
+            self->constant_frame_rate = constant_frame_rate;
+            self->num_temporal_layers = num_temporal_layers;
+            self->temporal_id_nested = temporal_id_nested;
+            self->length_size_minus_one = length_size_minus_one;
+            if (!nalu_types_obj.is_none()) {
+              for (auto item : nalu_types_obj) {
+                self->nalu_types.push_back(nb::cast<uint8_t>(item));
+              }
+            }
+            if (!nalu_data_obj.is_none()) {
+              for (auto item : nalu_data_obj) {
+                self->nalu_data.push_back(nb::cast<nb::bytes>(item));
+              }
+            }
+          },
+          "width"_a, "height"_a, "general_profile_idc"_a, "general_level_idc"_a,
+          "nalu_types"_a = nb::none(), "nalu_data"_a = nb::none(),
+          "general_profile_space"_a = 0, "general_tier_flag"_a = 0,
+          "general_profile_compatibility_flags"_a = 0,
+          "general_constraint_indicator_flags"_a = 0, "chroma_format_idc"_a = 1,
+          "bit_depth_luma_minus8"_a = 0, "bit_depth_chroma_minus8"_a = 0,
+          "min_spatial_segmentation_idc"_a = 0, "parallelism_type"_a = 0,
+          "avg_frame_rate"_a = 0, "constant_frame_rate"_a = 0,
+          "num_temporal_layers"_a = 0, "temporal_id_nested"_a = 0,
+          "length_size_minus_one"_a = 3)
+      .def_rw("width", &PyMp4SampleEntryHvc1::width)
+      .def_rw("height", &PyMp4SampleEntryHvc1::height)
+      .def_rw("general_profile_space",
+              &PyMp4SampleEntryHvc1::general_profile_space)
+      .def_rw("general_tier_flag", &PyMp4SampleEntryHvc1::general_tier_flag)
+      .def_rw("general_profile_idc", &PyMp4SampleEntryHvc1::general_profile_idc)
+      .def_rw("general_profile_compatibility_flags",
+              &PyMp4SampleEntryHvc1::general_profile_compatibility_flags)
+      .def_rw("general_constraint_indicator_flags",
+              &PyMp4SampleEntryHvc1::general_constraint_indicator_flags)
+      .def_rw("general_level_idc", &PyMp4SampleEntryHvc1::general_level_idc)
+      .def_rw("chroma_format_idc", &PyMp4SampleEntryHvc1::chroma_format_idc)
+      .def_rw("bit_depth_luma_minus8",
+              &PyMp4SampleEntryHvc1::bit_depth_luma_minus8)
+      .def_rw("bit_depth_chroma_minus8",
+              &PyMp4SampleEntryHvc1::bit_depth_chroma_minus8)
+      .def_rw("min_spatial_segmentation_idc",
+              &PyMp4SampleEntryHvc1::min_spatial_segmentation_idc)
+      .def_rw("parallelism_type", &PyMp4SampleEntryHvc1::parallelism_type)
+      .def_rw("avg_frame_rate", &PyMp4SampleEntryHvc1::avg_frame_rate)
+      .def_rw("constant_frame_rate", &PyMp4SampleEntryHvc1::constant_frame_rate)
+      .def_rw("num_temporal_layers", &PyMp4SampleEntryHvc1::num_temporal_layers)
+      .def_rw("temporal_id_nested", &PyMp4SampleEntryHvc1::temporal_id_nested)
+      .def_rw("length_size_minus_one",
+              &PyMp4SampleEntryHvc1::length_size_minus_one)
+      .def_rw("nalu_types", &PyMp4SampleEntryHvc1::nalu_types)
+      .def_rw("nalu_data", &PyMp4SampleEntryHvc1::nalu_data);
 
   nb::class_<PyMp4SampleEntryVp08>(m, "Mp4SampleEntryVp08")
       .def(nb::init<>())

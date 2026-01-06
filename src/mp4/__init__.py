@@ -10,6 +10,7 @@ from .mp4_ext import (
     # サンプルエントリークラス
     Mp4SampleEntryAvc1,
     Mp4SampleEntryHev1,
+    Mp4SampleEntryHvc1,
     Mp4SampleEntryVp08,
     Mp4SampleEntryVp09,
     Mp4SampleEntryAv01,
@@ -36,6 +37,7 @@ Mp4TrackKind = Literal["audio", "video"]
 Mp4SampleEntry = Union[
     Mp4SampleEntryAvc1,
     Mp4SampleEntryHev1,
+    Mp4SampleEntryHvc1,
     Mp4SampleEntryVp08,
     Mp4SampleEntryVp09,
     Mp4SampleEntryAv01,
@@ -59,6 +61,7 @@ __all__ = [
     "Mp4TrackInfo",
     "Mp4SampleEntryAvc1",
     "Mp4SampleEntryHev1",
+    "Mp4SampleEntryHvc1",
     "Mp4SampleEntryVp08",
     "Mp4SampleEntryVp09",
     "Mp4SampleEntryAv01",

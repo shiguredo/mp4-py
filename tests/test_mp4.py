@@ -1,16 +1,19 @@
 import io
 
-import pytest
-
 from mp4 import (
     Mp4FileDemuxer,
     Mp4FileMuxer,
     Mp4FileMuxerOptions,
     Mp4MuxSample,
     Mp4SampleEntryVp08,
+    Mp4SampleEntryVp09,
     Mp4SampleEntryAvc1,
     Mp4SampleEntryHev1,
+    Mp4SampleEntryHvc1,
     Mp4SampleEntryAv01,
+    Mp4SampleEntryOpus,
+    Mp4SampleEntryMp4a,
+    Mp4SampleEntryFlac,
     Mp4TrackInfo,
     Mp4DemuxSample,
 )
@@ -281,6 +284,40 @@ def test_video_sample_entry_hev1():
     assert isinstance(demux_sample.sample_entry, Mp4SampleEntryHev1)
 
 
+def test_video_sample_entry_hvc1():
+    """HVC1 (H.265/HEVC) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0)
+    sample_entry = Mp4SampleEntryHvc1(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        general_profile_idc=2,  # Main 10
+        general_level_idc=120,  # Level 4.0
+        nalu_types=[33],  # SPS
+        nalu_data=[b"dummy"],  # テスト用のダミーデータ
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryHvc1)
+
+
 def test_video_sample_entry_av01():
     """AV01 (AV1) サンプルエントリーのテスト"""
     output_buffer = io.BytesIO()
@@ -312,6 +349,200 @@ def test_video_sample_entry_av01():
 
     demux_sample = next(demuxer)
     assert isinstance(demux_sample.sample_entry, Mp4SampleEntryAv01)
+
+
+def test_video_sample_entry_vp09():
+    """VP09 (VP9) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0)
+    sample_entry = Mp4SampleEntryVp09(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        profile=0,
+        level=31,
+        bit_depth=8,
+        chroma_subsampling=1,
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryVp09)
+    assert demux_sample.sample_entry.width == VIDEO_WIDTH
+    assert demux_sample.sample_entry.height == VIDEO_HEIGHT
+
+
+def test_audio_sample_entry_opus():
+    """Opus サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    sample_entry = Mp4SampleEntryOpus(
+        channel_count=2,
+        sample_rate=48000,
+        sample_size=16,
+        pre_skip=312,
+        output_gain=0,
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="audio",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=48000,
+        duration=960,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "audio"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryOpus)
+    assert demux_sample.sample_entry.channel_count == 2
+    assert demux_sample.sample_entry.sample_rate == 48000
+
+
+def test_audio_sample_entry_mp4a():
+    """MP4A (AAC) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    # AAC-LC の最小限の DecoderSpecificInfo
+    dec_specific_info = bytes([0x11, 0x90])  # AAC-LC, 48kHz, stereo
+
+    sample_entry = Mp4SampleEntryMp4a(
+        channel_count=2,
+        sample_rate=48000,
+        sample_size=16,
+        dec_specific_info=dec_specific_info,
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="audio",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=48000,
+        duration=1024,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "audio"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryMp4a)
+    assert demux_sample.sample_entry.channel_count == 2
+    assert demux_sample.sample_entry.sample_rate == 48000
+
+
+def test_audio_sample_entry_flac():
+    """FLAC サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    # 最小限の FLAC STREAMINFO ブロック (34 バイト)
+    streaminfo_data = bytes(
+        [
+            0x00,
+            0x10,  # min_block_size = 16
+            0x00,
+            0x10,  # max_block_size = 16
+            0x00,
+            0x00,
+            0x00,  # min_frame_size = 0
+            0x00,
+            0x00,
+            0x00,  # max_frame_size = 0
+            0x0B,
+            0xB8,
+            0x00,  # sample_rate = 48000 (20 bits) + channels-1 = 1 (3 bits) + bps-1 = 15 (5 bits)
+            0xF0,
+            0x00,
+            0x00,
+            0x00,
+            0x00,  # total_samples (36 bits)
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,  # MD5 signature (16 bytes)
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ]
+    )
+
+    sample_entry = Mp4SampleEntryFlac(
+        channel_count=2,
+        sample_rate=48000,
+        sample_size=16,
+        streaminfo_data=streaminfo_data,
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="audio",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=48000,
+        duration=4096,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "audio"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryFlac)
+    assert demux_sample.sample_entry.channel_count == 2
+    assert demux_sample.sample_entry.sample_rate == 48000
 
 
 def test_empty_mux_without_options():
