@@ -137,219 +137,74 @@ struct PyMp4SampleEntryAvc1 {
   }
 };
 
-struct PyMp4SampleEntryHev1 {
-  uint16_t width = 0;
-  uint16_t height = 0;
-  uint8_t general_profile_space = 0;
-  uint8_t general_tier_flag = 0;
-  uint8_t general_profile_idc = 0;
-  uint32_t general_profile_compatibility_flags = 0;
-  uint64_t general_constraint_indicator_flags = 0;
-  uint8_t general_level_idc = 0;
-  uint8_t chroma_format_idc = 1;
-  uint8_t bit_depth_luma_minus8 = 0;
-  uint8_t bit_depth_chroma_minus8 = 0;
-  uint16_t min_spatial_segmentation_idc = 0;
-  uint8_t parallelism_type = 0;
-  uint16_t avg_frame_rate = 0;
-  uint8_t constant_frame_rate = 0;
-  uint8_t num_temporal_layers = 0;
-  uint8_t temporal_id_nested = 0;
-  uint8_t length_size_minus_one = 3;
-  std::vector<uint8_t> nalu_types;
-  std::vector<nb::bytes> nalu_data;
-
-  PyMp4SampleEntryHev1() = default;
-  PyMp4SampleEntryHev1(uint16_t width_,
-                       uint16_t height_,
-                       uint8_t general_profile_idc_,
-                       uint8_t general_level_idc_,
-                       const std::vector<uint8_t>& nalu_types_,
-                       const std::vector<nb::bytes>& nalu_data_,
-                       uint8_t general_profile_space_,
-                       uint8_t general_tier_flag_,
-                       uint32_t general_profile_compatibility_flags_,
-                       uint64_t general_constraint_indicator_flags_,
-                       uint8_t chroma_format_idc_,
-                       uint8_t bit_depth_luma_minus8_,
-                       uint8_t bit_depth_chroma_minus8_,
-                       uint16_t min_spatial_segmentation_idc_,
-                       uint8_t parallelism_type_,
-                       uint16_t avg_frame_rate_,
-                       uint8_t constant_frame_rate_,
-                       uint8_t num_temporal_layers_,
-                       uint8_t temporal_id_nested_,
-                       uint8_t length_size_minus_one_)
-      : width(width_),
-        height(height_),
-        general_profile_space(general_profile_space_),
-        general_tier_flag(general_tier_flag_),
-        general_profile_idc(general_profile_idc_),
-        general_profile_compatibility_flags(
-            general_profile_compatibility_flags_),
-        general_constraint_indicator_flags(general_constraint_indicator_flags_),
-        general_level_idc(general_level_idc_),
-        chroma_format_idc(chroma_format_idc_),
-        bit_depth_luma_minus8(bit_depth_luma_minus8_),
-        bit_depth_chroma_minus8(bit_depth_chroma_minus8_),
-        min_spatial_segmentation_idc(min_spatial_segmentation_idc_),
-        parallelism_type(parallelism_type_),
-        avg_frame_rate(avg_frame_rate_),
-        constant_frame_rate(constant_frame_rate_),
-        num_temporal_layers(num_temporal_layers_),
-        temporal_id_nested(temporal_id_nested_),
-        length_size_minus_one(length_size_minus_one_),
-        nalu_types(nalu_types_),
-        nalu_data(nalu_data_) {}
-
-  static PyMp4SampleEntryHev1 from_raw(const Mp4SampleEntryHev1& raw) {
-    PyMp4SampleEntryHev1 result;
-    result.width = raw.width;
-    result.height = raw.height;
-    result.general_profile_space = raw.general_profile_space;
-    result.general_tier_flag = raw.general_tier_flag;
-    result.general_profile_idc = raw.general_profile_idc;
-    result.general_profile_compatibility_flags =
-        raw.general_profile_compatibility_flags;
-    result.general_constraint_indicator_flags =
-        raw.general_constraint_indicator_flags;
-    result.general_level_idc = raw.general_level_idc;
-    result.chroma_format_idc = raw.chroma_format_idc;
-    result.bit_depth_luma_minus8 = raw.bit_depth_luma_minus8;
-    result.bit_depth_chroma_minus8 = raw.bit_depth_chroma_minus8;
-    result.min_spatial_segmentation_idc = raw.min_spatial_segmentation_idc;
-    result.parallelism_type = raw.parallelism_type;
-    result.avg_frame_rate = raw.avg_frame_rate;
-    result.constant_frame_rate = raw.constant_frame_rate;
-    result.num_temporal_layers = raw.num_temporal_layers;
-    result.temporal_id_nested = raw.temporal_id_nested;
-    result.length_size_minus_one = raw.length_size_minus_one;
-
-    // NALU データを抽出
-    if (raw.nalu_array_count > 0 && raw.nalu_types) {
-      uint32_t offset = 0;
-      for (uint32_t i = 0; i < raw.nalu_array_count; i++) {
-        uint32_t count = raw.nalu_counts ? raw.nalu_counts[i] : 0;
-        for (uint32_t j = 0; j < count; j++) {
-          result.nalu_types.push_back(raw.nalu_types[i]);
-          uint32_t size = raw.nalu_sizes[offset + j];
-          result.nalu_data.push_back(nb::bytes(
-              reinterpret_cast<const char*>(raw.nalu_data[offset + j]), size));
-        }
-        offset += count;
-      }
-    }
-
-    return result;
+// HEVC サンプルエントリー構造体を定義するマクロ（hev1/hvc1 で共用）
+#define DEFINE_HEVC_SAMPLE_ENTRY(ClassName, RawTypeName)                      \
+  struct ClassName {                                                          \
+    uint16_t width = 0;                                                       \
+    uint16_t height = 0;                                                      \
+    uint8_t general_profile_space = 0;                                        \
+    uint8_t general_tier_flag = 0;                                            \
+    uint8_t general_profile_idc = 0;                                          \
+    uint32_t general_profile_compatibility_flags = 0;                         \
+    uint64_t general_constraint_indicator_flags = 0;                          \
+    uint8_t general_level_idc = 0;                                            \
+    uint8_t chroma_format_idc = 1;                                            \
+    uint8_t bit_depth_luma_minus8 = 0;                                        \
+    uint8_t bit_depth_chroma_minus8 = 0;                                      \
+    uint16_t min_spatial_segmentation_idc = 0;                                \
+    uint8_t parallelism_type = 0;                                             \
+    uint16_t avg_frame_rate = 0;                                              \
+    uint8_t constant_frame_rate = 0;                                          \
+    uint8_t num_temporal_layers = 0;                                          \
+    uint8_t temporal_id_nested = 0;                                           \
+    uint8_t length_size_minus_one = 3;                                        \
+    std::vector<uint8_t> nalu_types;                                          \
+    std::vector<nb::bytes> nalu_data;                                         \
+                                                                              \
+    ClassName() = default;                                                    \
+                                                                              \
+    static ClassName from_raw(const RawTypeName& raw) {                       \
+      ClassName result;                                                       \
+      result.width = raw.width;                                               \
+      result.height = raw.height;                                             \
+      result.general_profile_space = raw.general_profile_space;               \
+      result.general_tier_flag = raw.general_tier_flag;                       \
+      result.general_profile_idc = raw.general_profile_idc;                   \
+      result.general_profile_compatibility_flags =                            \
+          raw.general_profile_compatibility_flags;                            \
+      result.general_constraint_indicator_flags =                             \
+          raw.general_constraint_indicator_flags;                             \
+      result.general_level_idc = raw.general_level_idc;                       \
+      result.chroma_format_idc = raw.chroma_format_idc;                       \
+      result.bit_depth_luma_minus8 = raw.bit_depth_luma_minus8;               \
+      result.bit_depth_chroma_minus8 = raw.bit_depth_chroma_minus8;           \
+      result.min_spatial_segmentation_idc = raw.min_spatial_segmentation_idc; \
+      result.parallelism_type = raw.parallelism_type;                         \
+      result.avg_frame_rate = raw.avg_frame_rate;                             \
+      result.constant_frame_rate = raw.constant_frame_rate;                   \
+      result.num_temporal_layers = raw.num_temporal_layers;                   \
+      result.temporal_id_nested = raw.temporal_id_nested;                     \
+      result.length_size_minus_one = raw.length_size_minus_one;               \
+      if (raw.nalu_array_count > 0 && raw.nalu_types) {                       \
+        uint32_t offset = 0;                                                  \
+        for (uint32_t i = 0; i < raw.nalu_array_count; i++) {                 \
+          uint32_t count = raw.nalu_counts ? raw.nalu_counts[i] : 0;          \
+          for (uint32_t j = 0; j < count; j++) {                              \
+            result.nalu_types.push_back(raw.nalu_types[i]);                   \
+            uint32_t size = raw.nalu_sizes[offset + j];                       \
+            result.nalu_data.push_back(nb::bytes(                             \
+                reinterpret_cast<const char*>(raw.nalu_data[offset + j]),     \
+                size));                                                       \
+          }                                                                   \
+          offset += count;                                                    \
+        }                                                                     \
+      }                                                                       \
+      return result;                                                          \
+    }                                                                         \
   }
-};
 
-struct PyMp4SampleEntryHvc1 {
-  uint16_t width = 0;
-  uint16_t height = 0;
-  uint8_t general_profile_space = 0;
-  uint8_t general_tier_flag = 0;
-  uint8_t general_profile_idc = 0;
-  uint32_t general_profile_compatibility_flags = 0;
-  uint64_t general_constraint_indicator_flags = 0;
-  uint8_t general_level_idc = 0;
-  uint8_t chroma_format_idc = 1;
-  uint8_t bit_depth_luma_minus8 = 0;
-  uint8_t bit_depth_chroma_minus8 = 0;
-  uint16_t min_spatial_segmentation_idc = 0;
-  uint8_t parallelism_type = 0;
-  uint16_t avg_frame_rate = 0;
-  uint8_t constant_frame_rate = 0;
-  uint8_t num_temporal_layers = 0;
-  uint8_t temporal_id_nested = 0;
-  uint8_t length_size_minus_one = 3;
-  std::vector<uint8_t> nalu_types;
-  std::vector<nb::bytes> nalu_data;
-
-  PyMp4SampleEntryHvc1() = default;
-  PyMp4SampleEntryHvc1(uint16_t width_,
-                       uint16_t height_,
-                       uint8_t general_profile_idc_,
-                       uint8_t general_level_idc_,
-                       const std::vector<uint8_t>& nalu_types_,
-                       const std::vector<nb::bytes>& nalu_data_,
-                       uint8_t general_profile_space_,
-                       uint8_t general_tier_flag_,
-                       uint32_t general_profile_compatibility_flags_,
-                       uint64_t general_constraint_indicator_flags_,
-                       uint8_t chroma_format_idc_,
-                       uint8_t bit_depth_luma_minus8_,
-                       uint8_t bit_depth_chroma_minus8_,
-                       uint16_t min_spatial_segmentation_idc_,
-                       uint8_t parallelism_type_,
-                       uint16_t avg_frame_rate_,
-                       uint8_t constant_frame_rate_,
-                       uint8_t num_temporal_layers_,
-                       uint8_t temporal_id_nested_,
-                       uint8_t length_size_minus_one_)
-      : width(width_),
-        height(height_),
-        general_profile_space(general_profile_space_),
-        general_tier_flag(general_tier_flag_),
-        general_profile_idc(general_profile_idc_),
-        general_profile_compatibility_flags(
-            general_profile_compatibility_flags_),
-        general_constraint_indicator_flags(general_constraint_indicator_flags_),
-        general_level_idc(general_level_idc_),
-        chroma_format_idc(chroma_format_idc_),
-        bit_depth_luma_minus8(bit_depth_luma_minus8_),
-        bit_depth_chroma_minus8(bit_depth_chroma_minus8_),
-        min_spatial_segmentation_idc(min_spatial_segmentation_idc_),
-        parallelism_type(parallelism_type_),
-        avg_frame_rate(avg_frame_rate_),
-        constant_frame_rate(constant_frame_rate_),
-        num_temporal_layers(num_temporal_layers_),
-        temporal_id_nested(temporal_id_nested_),
-        length_size_minus_one(length_size_minus_one_),
-        nalu_types(nalu_types_),
-        nalu_data(nalu_data_) {}
-
-  static PyMp4SampleEntryHvc1 from_raw(const Mp4SampleEntryHvc1& raw) {
-    PyMp4SampleEntryHvc1 result;
-    result.width = raw.width;
-    result.height = raw.height;
-    result.general_profile_space = raw.general_profile_space;
-    result.general_tier_flag = raw.general_tier_flag;
-    result.general_profile_idc = raw.general_profile_idc;
-    result.general_profile_compatibility_flags =
-        raw.general_profile_compatibility_flags;
-    result.general_constraint_indicator_flags =
-        raw.general_constraint_indicator_flags;
-    result.general_level_idc = raw.general_level_idc;
-    result.chroma_format_idc = raw.chroma_format_idc;
-    result.bit_depth_luma_minus8 = raw.bit_depth_luma_minus8;
-    result.bit_depth_chroma_minus8 = raw.bit_depth_chroma_minus8;
-    result.min_spatial_segmentation_idc = raw.min_spatial_segmentation_idc;
-    result.parallelism_type = raw.parallelism_type;
-    result.avg_frame_rate = raw.avg_frame_rate;
-    result.constant_frame_rate = raw.constant_frame_rate;
-    result.num_temporal_layers = raw.num_temporal_layers;
-    result.temporal_id_nested = raw.temporal_id_nested;
-    result.length_size_minus_one = raw.length_size_minus_one;
-
-    // NALU データを抽出
-    if (raw.nalu_array_count > 0 && raw.nalu_types) {
-      uint32_t offset = 0;
-      for (uint32_t i = 0; i < raw.nalu_array_count; i++) {
-        uint32_t count = raw.nalu_counts ? raw.nalu_counts[i] : 0;
-        for (uint32_t j = 0; j < count; j++) {
-          result.nalu_types.push_back(raw.nalu_types[i]);
-          uint32_t size = raw.nalu_sizes[offset + j];
-          result.nalu_data.push_back(nb::bytes(
-              reinterpret_cast<const char*>(raw.nalu_data[offset + j]), size));
-        }
-        offset += count;
-      }
-    }
-
-    return result;
-  }
-};
+DEFINE_HEVC_SAMPLE_ENTRY(PyMp4SampleEntryHev1, Mp4SampleEntryHev1);
+DEFINE_HEVC_SAMPLE_ENTRY(PyMp4SampleEntryHvc1, Mp4SampleEntryHvc1);
 
 struct PyMp4SampleEntryVp08 {
   uint16_t width = 0;
@@ -1155,30 +1010,31 @@ class SampleEntryConverter {
     avc1.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8.value_or(0);
   }
 
-  void convert_hev1(PyMp4SampleEntryHev1& entry) {
-    raw_entry.kind = MP4_SAMPLE_ENTRY_KIND_HEV1;
-    auto& hev1 = raw_entry.data.hev1;
+  // HEVC (hev1/hvc1) 共通の変換テンプレートメソッド
+  template <Mp4SampleEntryKind Kind, typename PyEntry, typename RawHevc>
+  void convert_hevc(PyEntry& entry, RawHevc& hevc) {
+    raw_entry.kind = Kind;
 
-    hev1.width = entry.width;
-    hev1.height = entry.height;
-    hev1.general_profile_space = entry.general_profile_space;
-    hev1.general_tier_flag = entry.general_tier_flag;
-    hev1.general_profile_idc = entry.general_profile_idc;
-    hev1.general_profile_compatibility_flags =
+    hevc.width = entry.width;
+    hevc.height = entry.height;
+    hevc.general_profile_space = entry.general_profile_space;
+    hevc.general_tier_flag = entry.general_tier_flag;
+    hevc.general_profile_idc = entry.general_profile_idc;
+    hevc.general_profile_compatibility_flags =
         entry.general_profile_compatibility_flags;
-    hev1.general_constraint_indicator_flags =
+    hevc.general_constraint_indicator_flags =
         entry.general_constraint_indicator_flags;
-    hev1.general_level_idc = entry.general_level_idc;
-    hev1.chroma_format_idc = entry.chroma_format_idc;
-    hev1.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8;
-    hev1.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8;
-    hev1.min_spatial_segmentation_idc = entry.min_spatial_segmentation_idc;
-    hev1.parallelism_type = entry.parallelism_type;
-    hev1.avg_frame_rate = entry.avg_frame_rate;
-    hev1.constant_frame_rate = entry.constant_frame_rate;
-    hev1.num_temporal_layers = entry.num_temporal_layers;
-    hev1.temporal_id_nested = entry.temporal_id_nested;
-    hev1.length_size_minus_one = entry.length_size_minus_one;
+    hevc.general_level_idc = entry.general_level_idc;
+    hevc.chroma_format_idc = entry.chroma_format_idc;
+    hevc.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8;
+    hevc.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8;
+    hevc.min_spatial_segmentation_idc = entry.min_spatial_segmentation_idc;
+    hevc.parallelism_type = entry.parallelism_type;
+    hevc.avg_frame_rate = entry.avg_frame_rate;
+    hevc.constant_frame_rate = entry.constant_frame_rate;
+    hevc.num_temporal_layers = entry.num_temporal_layers;
+    hevc.temporal_id_nested = entry.temporal_id_nested;
+    hevc.length_size_minus_one = entry.length_size_minus_one;
 
     // nalu_types と nalu_data の長さが等しいことをチェック
     if (entry.nalu_types.size() != entry.nalu_data.size()) {
@@ -1198,69 +1054,23 @@ class SampleEntryConverter {
       nalu_data_pointers.push_back(buf.data());
     }
 
-    hev1.nalu_array_count = static_cast<uint32_t>(entry.nalu_types.size());
-    hev1.nalu_types =
+    hevc.nalu_array_count = static_cast<uint32_t>(entry.nalu_types.size());
+    hevc.nalu_types =
         nalu_types_buffer.empty() ? nullptr : nalu_types_buffer.data();
-    hev1.nalu_counts =
+    hevc.nalu_counts =
         nalu_counts_buffer.empty() ? nullptr : nalu_counts_buffer.data();
-    hev1.nalu_data =
+    hevc.nalu_data =
         nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
-    hev1.nalu_sizes =
+    hevc.nalu_sizes =
         nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
   }
 
+  void convert_hev1(PyMp4SampleEntryHev1& entry) {
+    convert_hevc<MP4_SAMPLE_ENTRY_KIND_HEV1>(entry, raw_entry.data.hev1);
+  }
+
   void convert_hvc1(PyMp4SampleEntryHvc1& entry) {
-    raw_entry.kind = MP4_SAMPLE_ENTRY_KIND_HVC1;
-    auto& hvc1 = raw_entry.data.hvc1;
-
-    hvc1.width = entry.width;
-    hvc1.height = entry.height;
-    hvc1.general_profile_space = entry.general_profile_space;
-    hvc1.general_tier_flag = entry.general_tier_flag;
-    hvc1.general_profile_idc = entry.general_profile_idc;
-    hvc1.general_profile_compatibility_flags =
-        entry.general_profile_compatibility_flags;
-    hvc1.general_constraint_indicator_flags =
-        entry.general_constraint_indicator_flags;
-    hvc1.general_level_idc = entry.general_level_idc;
-    hvc1.chroma_format_idc = entry.chroma_format_idc;
-    hvc1.bit_depth_luma_minus8 = entry.bit_depth_luma_minus8;
-    hvc1.bit_depth_chroma_minus8 = entry.bit_depth_chroma_minus8;
-    hvc1.min_spatial_segmentation_idc = entry.min_spatial_segmentation_idc;
-    hvc1.parallelism_type = entry.parallelism_type;
-    hvc1.avg_frame_rate = entry.avg_frame_rate;
-    hvc1.constant_frame_rate = entry.constant_frame_rate;
-    hvc1.num_temporal_layers = entry.num_temporal_layers;
-    hvc1.temporal_id_nested = entry.temporal_id_nested;
-    hvc1.length_size_minus_one = entry.length_size_minus_one;
-
-    // nalu_types と nalu_data の長さが等しいことをチェック
-    if (entry.nalu_types.size() != entry.nalu_data.size()) {
-      throw Mp4Exception("nalu_types and nalu_data must have the same length");
-    }
-
-    // NALU データ
-    nalu_types_buffer = entry.nalu_types;
-    nalu_counts_buffer.resize(entry.nalu_types.size(), 1);
-
-    for (auto& nalu : entry.nalu_data) {
-      const auto* ptr = static_cast<const uint8_t*>(nalu.data());
-      nalu_data_buffers.emplace_back(ptr, ptr + nalu.size());
-      nalu_sizes_buffer.push_back(static_cast<uint32_t>(nalu.size()));
-    }
-    for (auto& buf : nalu_data_buffers) {
-      nalu_data_pointers.push_back(buf.data());
-    }
-
-    hvc1.nalu_array_count = static_cast<uint32_t>(entry.nalu_types.size());
-    hvc1.nalu_types =
-        nalu_types_buffer.empty() ? nullptr : nalu_types_buffer.data();
-    hvc1.nalu_counts =
-        nalu_counts_buffer.empty() ? nullptr : nalu_counts_buffer.data();
-    hvc1.nalu_data =
-        nalu_data_pointers.empty() ? nullptr : nalu_data_pointers.data();
-    hvc1.nalu_sizes =
-        nalu_sizes_buffer.empty() ? nullptr : nalu_sizes_buffer.data();
+    convert_hevc<MP4_SAMPLE_ENTRY_KIND_HVC1>(entry, raw_entry.data.hvc1);
   }
 
   void convert_vp08(PyMp4SampleEntryVp08& entry) {
