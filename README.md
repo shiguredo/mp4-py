@@ -36,7 +36,6 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 - 3.14
 - 3.14t
 - 3.13
-- 3.13t
 - 3.12
 
 ## インストール

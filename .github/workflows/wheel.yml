@@ -24,7 +24,6 @@ jobs:
           - "3.14"
           - "3.14t"
           - "3.13"
-          - "3.13t"
           - "3.12"
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
@@ -66,7 +65,6 @@ jobs:
           - "3.14"
           - "3.14t"
           - "3.13"
-          - "3.13t"
           - "3.12"
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
@@ -108,7 +106,6 @@ jobs:
           - "3.14"
           - "3.14t"
           - "3.13"
-          - "3.13t"
           - "3.12"
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
@@ -155,7 +152,6 @@ jobs:
           - "3.14"
           - "3.14t"
           - "3.13"
-          - "3.13t"
           - "3.12"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
