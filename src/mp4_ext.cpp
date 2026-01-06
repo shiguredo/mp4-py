@@ -1554,17 +1554,20 @@ NB_MODULE(mp4_ext, m) {
   // ユーティリティ関数
   m.def("library_version", &library_version,
         nb::sig("def library_version() -> str"),
-        "mp4-rust ライブラリのバージョンを取得する");
+        "Get the mp4-rust library version");
 
   m.def("estimate_maximum_moov_box_size", &estimate_maximum_moov_box_size,
         "audio_sample_count"_a, "video_sample_count"_a,
         nb::sig("def estimate_maximum_moov_box_size(audio_sample_count: int, "
                 "video_sample_count: "
                 "int) -> int"),
-        "moov ボックスの最大サイズを見積もる");
+        "Estimate maximum moov box size");
 
   // サンプルエントリークラス
-  nb::class_<PyMp4SampleEntryAvc1>(m, "Mp4SampleEntryAvc1")
+  nb::class_<PyMp4SampleEntryAvc1>(
+      m, "Mp4SampleEntryAvc1",
+      "H.264/AVC video sample entry.\n\n"
+      "Contains codec configuration for AVC (Advanced Video Coding).")
       .def(nb::init<>())
       .def(
           "__init__",
@@ -1602,25 +1605,36 @@ NB_MODULE(mp4_ext, m) {
           "length_size_minus_one"_a = 3, "chroma_format"_a = std::nullopt,
           "bit_depth_luma_minus8"_a = std::nullopt,
           "bit_depth_chroma_minus8"_a = std::nullopt)
-      .def_rw("width", &PyMp4SampleEntryAvc1::width)
-      .def_rw("height", &PyMp4SampleEntryAvc1::height)
+      .def_rw("width", &PyMp4SampleEntryAvc1::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryAvc1::height, "Video height in pixels")
       .def_rw("avc_profile_indication",
-              &PyMp4SampleEntryAvc1::avc_profile_indication)
+              &PyMp4SampleEntryAvc1::avc_profile_indication, "AVC profile")
       .def_rw("profile_compatibility",
-              &PyMp4SampleEntryAvc1::profile_compatibility)
+              &PyMp4SampleEntryAvc1::profile_compatibility,
+              "Profile compatibility flags")
       .def_rw("avc_level_indication",
-              &PyMp4SampleEntryAvc1::avc_level_indication)
+              &PyMp4SampleEntryAvc1::avc_level_indication, "AVC level")
       .def_rw("length_size_minus_one",
-              &PyMp4SampleEntryAvc1::length_size_minus_one)
-      .def_rw("sps_data", &PyMp4SampleEntryAvc1::sps_data)
-      .def_rw("pps_data", &PyMp4SampleEntryAvc1::pps_data)
-      .def_rw("chroma_format", &PyMp4SampleEntryAvc1::chroma_format)
+              &PyMp4SampleEntryAvc1::length_size_minus_one,
+              "NAL unit length field size minus 1")
+      .def_rw("sps_data", &PyMp4SampleEntryAvc1::sps_data,
+              "List of SPS (Sequence Parameter Set) data")
+      .def_rw("pps_data", &PyMp4SampleEntryAvc1::pps_data,
+              "List of PPS (Picture Parameter Set) data")
+      .def_rw("chroma_format", &PyMp4SampleEntryAvc1::chroma_format,
+              "Chroma format (optional)")
       .def_rw("bit_depth_luma_minus8",
-              &PyMp4SampleEntryAvc1::bit_depth_luma_minus8)
+              &PyMp4SampleEntryAvc1::bit_depth_luma_minus8,
+              "Luma bit depth minus 8 (optional)")
       .def_rw("bit_depth_chroma_minus8",
-              &PyMp4SampleEntryAvc1::bit_depth_chroma_minus8);
+              &PyMp4SampleEntryAvc1::bit_depth_chroma_minus8,
+              "Chroma bit depth minus 8 (optional)");
 
-  nb::class_<PyMp4SampleEntryHev1>(m, "Mp4SampleEntryHev1")
+  nb::class_<PyMp4SampleEntryHev1>(
+      m, "Mp4SampleEntryHev1",
+      "H.265/HEVC video sample entry (out-of-band parameters).\n\n"
+      "Contains codec configuration for HEVC (High Efficiency Video Coding).\n"
+      "VPS/SPS/PPS are stored in the sample entry.")
       .def(nb::init<>())
       .def(
           "__init__",
@@ -1678,35 +1692,57 @@ NB_MODULE(mp4_ext, m) {
           "avg_frame_rate"_a = 0, "constant_frame_rate"_a = 0,
           "num_temporal_layers"_a = 0, "temporal_id_nested"_a = 0,
           "length_size_minus_one"_a = 3)
-      .def_rw("width", &PyMp4SampleEntryHev1::width)
-      .def_rw("height", &PyMp4SampleEntryHev1::height)
+      .def_rw("width", &PyMp4SampleEntryHev1::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryHev1::height, "Video height in pixels")
       .def_rw("general_profile_space",
-              &PyMp4SampleEntryHev1::general_profile_space)
-      .def_rw("general_tier_flag", &PyMp4SampleEntryHev1::general_tier_flag)
-      .def_rw("general_profile_idc", &PyMp4SampleEntryHev1::general_profile_idc)
+              &PyMp4SampleEntryHev1::general_profile_space,
+              "Profile space (0-3)")
+      .def_rw("general_tier_flag", &PyMp4SampleEntryHev1::general_tier_flag,
+              "Tier flag (0=Main, 1=High)")
+      .def_rw("general_profile_idc", &PyMp4SampleEntryHev1::general_profile_idc,
+              "Profile IDC")
       .def_rw("general_profile_compatibility_flags",
-              &PyMp4SampleEntryHev1::general_profile_compatibility_flags)
+              &PyMp4SampleEntryHev1::general_profile_compatibility_flags,
+              "Profile compatibility flags")
       .def_rw("general_constraint_indicator_flags",
-              &PyMp4SampleEntryHev1::general_constraint_indicator_flags)
-      .def_rw("general_level_idc", &PyMp4SampleEntryHev1::general_level_idc)
-      .def_rw("chroma_format_idc", &PyMp4SampleEntryHev1::chroma_format_idc)
+              &PyMp4SampleEntryHev1::general_constraint_indicator_flags,
+              "Constraint indicator flags")
+      .def_rw("general_level_idc", &PyMp4SampleEntryHev1::general_level_idc,
+              "Level IDC")
+      .def_rw("chroma_format_idc", &PyMp4SampleEntryHev1::chroma_format_idc,
+              "Chroma format IDC")
       .def_rw("bit_depth_luma_minus8",
-              &PyMp4SampleEntryHev1::bit_depth_luma_minus8)
+              &PyMp4SampleEntryHev1::bit_depth_luma_minus8,
+              "Luma bit depth minus 8")
       .def_rw("bit_depth_chroma_minus8",
-              &PyMp4SampleEntryHev1::bit_depth_chroma_minus8)
+              &PyMp4SampleEntryHev1::bit_depth_chroma_minus8,
+              "Chroma bit depth minus 8")
       .def_rw("min_spatial_segmentation_idc",
-              &PyMp4SampleEntryHev1::min_spatial_segmentation_idc)
-      .def_rw("parallelism_type", &PyMp4SampleEntryHev1::parallelism_type)
-      .def_rw("avg_frame_rate", &PyMp4SampleEntryHev1::avg_frame_rate)
-      .def_rw("constant_frame_rate", &PyMp4SampleEntryHev1::constant_frame_rate)
-      .def_rw("num_temporal_layers", &PyMp4SampleEntryHev1::num_temporal_layers)
-      .def_rw("temporal_id_nested", &PyMp4SampleEntryHev1::temporal_id_nested)
+              &PyMp4SampleEntryHev1::min_spatial_segmentation_idc,
+              "Minimum spatial segmentation IDC")
+      .def_rw("parallelism_type", &PyMp4SampleEntryHev1::parallelism_type,
+              "Parallelism type")
+      .def_rw("avg_frame_rate", &PyMp4SampleEntryHev1::avg_frame_rate,
+              "Average frame rate")
+      .def_rw("constant_frame_rate", &PyMp4SampleEntryHev1::constant_frame_rate,
+              "Constant frame rate flag")
+      .def_rw("num_temporal_layers", &PyMp4SampleEntryHev1::num_temporal_layers,
+              "Number of temporal layers")
+      .def_rw("temporal_id_nested", &PyMp4SampleEntryHev1::temporal_id_nested,
+              "Temporal ID nested flag")
       .def_rw("length_size_minus_one",
-              &PyMp4SampleEntryHev1::length_size_minus_one)
-      .def_rw("nalu_types", &PyMp4SampleEntryHev1::nalu_types)
-      .def_rw("nalu_data", &PyMp4SampleEntryHev1::nalu_data);
+              &PyMp4SampleEntryHev1::length_size_minus_one,
+              "NAL unit length field size minus 1")
+      .def_rw("nalu_types", &PyMp4SampleEntryHev1::nalu_types,
+              "List of NAL unit types")
+      .def_rw("nalu_data", &PyMp4SampleEntryHev1::nalu_data,
+              "List of NAL unit data");
 
-  nb::class_<PyMp4SampleEntryHvc1>(m, "Mp4SampleEntryHvc1")
+  nb::class_<PyMp4SampleEntryHvc1>(
+      m, "Mp4SampleEntryHvc1",
+      "H.265/HEVC video sample entry (in-band parameters).\n\n"
+      "Contains codec configuration for HEVC (High Efficiency Video Coding).\n"
+      "VPS/SPS/PPS are stored in the sample stream.")
       .def(nb::init<>())
       .def(
           "__init__",
@@ -1764,54 +1800,81 @@ NB_MODULE(mp4_ext, m) {
           "avg_frame_rate"_a = 0, "constant_frame_rate"_a = 0,
           "num_temporal_layers"_a = 0, "temporal_id_nested"_a = 0,
           "length_size_minus_one"_a = 3)
-      .def_rw("width", &PyMp4SampleEntryHvc1::width)
-      .def_rw("height", &PyMp4SampleEntryHvc1::height)
+      .def_rw("width", &PyMp4SampleEntryHvc1::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryHvc1::height, "Video height in pixels")
       .def_rw("general_profile_space",
-              &PyMp4SampleEntryHvc1::general_profile_space)
-      .def_rw("general_tier_flag", &PyMp4SampleEntryHvc1::general_tier_flag)
-      .def_rw("general_profile_idc", &PyMp4SampleEntryHvc1::general_profile_idc)
+              &PyMp4SampleEntryHvc1::general_profile_space,
+              "Profile space (0-3)")
+      .def_rw("general_tier_flag", &PyMp4SampleEntryHvc1::general_tier_flag,
+              "Tier flag (0=Main, 1=High)")
+      .def_rw("general_profile_idc", &PyMp4SampleEntryHvc1::general_profile_idc,
+              "Profile IDC (1=Main, 2=Main10, 3=Main Still Picture)")
       .def_rw("general_profile_compatibility_flags",
-              &PyMp4SampleEntryHvc1::general_profile_compatibility_flags)
+              &PyMp4SampleEntryHvc1::general_profile_compatibility_flags,
+              "Profile compatibility flags (32-bit)")
       .def_rw("general_constraint_indicator_flags",
-              &PyMp4SampleEntryHvc1::general_constraint_indicator_flags)
-      .def_rw("general_level_idc", &PyMp4SampleEntryHvc1::general_level_idc)
-      .def_rw("chroma_format_idc", &PyMp4SampleEntryHvc1::chroma_format_idc)
+              &PyMp4SampleEntryHvc1::general_constraint_indicator_flags,
+              "Constraint indicator flags (48-bit)")
+      .def_rw("general_level_idc", &PyMp4SampleEntryHvc1::general_level_idc,
+              "Level IDC (30x value, e.g., 93 = Level 3.1)")
+      .def_rw("chroma_format_idc", &PyMp4SampleEntryHvc1::chroma_format_idc,
+              "Chroma format (0=monochrome, 1=4:2:0, 2=4:2:2, 3=4:4:4)")
       .def_rw("bit_depth_luma_minus8",
-              &PyMp4SampleEntryHvc1::bit_depth_luma_minus8)
+              &PyMp4SampleEntryHvc1::bit_depth_luma_minus8,
+              "Luma bit depth minus 8")
       .def_rw("bit_depth_chroma_minus8",
-              &PyMp4SampleEntryHvc1::bit_depth_chroma_minus8)
+              &PyMp4SampleEntryHvc1::bit_depth_chroma_minus8,
+              "Chroma bit depth minus 8")
       .def_rw("min_spatial_segmentation_idc",
-              &PyMp4SampleEntryHvc1::min_spatial_segmentation_idc)
-      .def_rw("parallelism_type", &PyMp4SampleEntryHvc1::parallelism_type)
-      .def_rw("avg_frame_rate", &PyMp4SampleEntryHvc1::avg_frame_rate)
-      .def_rw("constant_frame_rate", &PyMp4SampleEntryHvc1::constant_frame_rate)
-      .def_rw("num_temporal_layers", &PyMp4SampleEntryHvc1::num_temporal_layers)
-      .def_rw("temporal_id_nested", &PyMp4SampleEntryHvc1::temporal_id_nested)
+              &PyMp4SampleEntryHvc1::min_spatial_segmentation_idc,
+              "Minimum spatial segmentation IDC")
+      .def_rw("parallelism_type", &PyMp4SampleEntryHvc1::parallelism_type,
+              "Parallelism type")
+      .def_rw("avg_frame_rate", &PyMp4SampleEntryHvc1::avg_frame_rate,
+              "Average frame rate")
+      .def_rw("constant_frame_rate", &PyMp4SampleEntryHvc1::constant_frame_rate,
+              "Constant frame rate flag")
+      .def_rw("num_temporal_layers", &PyMp4SampleEntryHvc1::num_temporal_layers,
+              "Number of temporal layers")
+      .def_rw("temporal_id_nested", &PyMp4SampleEntryHvc1::temporal_id_nested,
+              "Temporal ID nested flag")
       .def_rw("length_size_minus_one",
-              &PyMp4SampleEntryHvc1::length_size_minus_one)
-      .def_rw("nalu_types", &PyMp4SampleEntryHvc1::nalu_types)
-      .def_rw("nalu_data", &PyMp4SampleEntryHvc1::nalu_data);
+              &PyMp4SampleEntryHvc1::length_size_minus_one,
+              "NAL unit length field size minus 1 (usually 3 = 4 bytes)")
+      .def_rw("nalu_types", &PyMp4SampleEntryHvc1::nalu_types,
+              "List of VPS/SPS/PPS NAL unit types")
+      .def_rw("nalu_data", &PyMp4SampleEntryHvc1::nalu_data,
+              "List of VPS/SPS/PPS NAL unit data");
 
-  nb::class_<PyMp4SampleEntryVp08>(m, "Mp4SampleEntryVp08")
+  nb::class_<PyMp4SampleEntryVp08>(m, "Mp4SampleEntryVp08",
+                                   "VP8 video sample entry.\n\n"
+                                   "Contains codec configuration for VP8.")
       .def(nb::init<>())
       .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, bool, uint8_t,
                     uint8_t, uint8_t>(),
            "width"_a, "height"_a, "bit_depth"_a = 8, "chroma_subsampling"_a = 0,
            "video_full_range_flag"_a = false, "colour_primaries"_a = 1,
            "transfer_characteristics"_a = 1, "matrix_coefficients"_a = 1)
-      .def_rw("width", &PyMp4SampleEntryVp08::width)
-      .def_rw("height", &PyMp4SampleEntryVp08::height)
-      .def_rw("bit_depth", &PyMp4SampleEntryVp08::bit_depth)
-      .def_rw("chroma_subsampling", &PyMp4SampleEntryVp08::chroma_subsampling)
+      .def_rw("width", &PyMp4SampleEntryVp08::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryVp08::height, "Video height in pixels")
+      .def_rw("bit_depth", &PyMp4SampleEntryVp08::bit_depth,
+              "Bit depth (usually 8)")
+      .def_rw("chroma_subsampling", &PyMp4SampleEntryVp08::chroma_subsampling,
+              "Chroma subsampling (0=4:2:0 vertical, 1=4:2:0 colocated)")
       .def_rw("video_full_range_flag",
-              &PyMp4SampleEntryVp08::video_full_range_flag)
-      .def_rw("colour_primaries", &PyMp4SampleEntryVp08::colour_primaries)
+              &PyMp4SampleEntryVp08::video_full_range_flag,
+              "Full range flag (True=0-255, False=16-235)")
+      .def_rw("colour_primaries", &PyMp4SampleEntryVp08::colour_primaries,
+              "Color primaries (ITU-T H.273, 1=BT.709)")
       .def_rw("transfer_characteristics",
-              &PyMp4SampleEntryVp08::transfer_characteristics)
-      .def_rw("matrix_coefficients",
-              &PyMp4SampleEntryVp08::matrix_coefficients);
+              &PyMp4SampleEntryVp08::transfer_characteristics,
+              "Transfer characteristics (ITU-T H.273, 1=BT.709)")
+      .def_rw("matrix_coefficients", &PyMp4SampleEntryVp08::matrix_coefficients,
+              "Matrix coefficients (ITU-T H.273, 1=BT.709)");
 
-  nb::class_<PyMp4SampleEntryVp09>(m, "Mp4SampleEntryVp09")
+  nb::class_<PyMp4SampleEntryVp09>(m, "Mp4SampleEntryVp09",
+                                   "VP9 video sample entry.\n\n"
+                                   "Contains codec configuration for VP9.")
       .def(nb::init<>())
       .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, uint8_t, uint8_t,
                     bool, uint8_t, uint8_t, uint8_t>(),
@@ -1819,21 +1882,32 @@ NB_MODULE(mp4_ext, m) {
            "chroma_subsampling"_a = 0, "video_full_range_flag"_a = false,
            "colour_primaries"_a = 1, "transfer_characteristics"_a = 1,
            "matrix_coefficients"_a = 1)
-      .def_rw("width", &PyMp4SampleEntryVp09::width)
-      .def_rw("height", &PyMp4SampleEntryVp09::height)
-      .def_rw("profile", &PyMp4SampleEntryVp09::profile)
-      .def_rw("level", &PyMp4SampleEntryVp09::level)
-      .def_rw("bit_depth", &PyMp4SampleEntryVp09::bit_depth)
-      .def_rw("chroma_subsampling", &PyMp4SampleEntryVp09::chroma_subsampling)
+      .def_rw("width", &PyMp4SampleEntryVp09::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryVp09::height, "Video height in pixels")
+      .def_rw("profile", &PyMp4SampleEntryVp09::profile,
+              "Profile (0=Profile 0, 1=Profile 1, 2=Profile 2, 3=Profile 3)")
+      .def_rw("level", &PyMp4SampleEntryVp09::level,
+              "Level (10=Level 1.0, 51=Level 5.1, etc.)")
+      .def_rw("bit_depth", &PyMp4SampleEntryVp09::bit_depth,
+              "Bit depth (8, 10, 12)")
+      .def_rw("chroma_subsampling", &PyMp4SampleEntryVp09::chroma_subsampling,
+              "Chroma subsampling (0=4:2:0 vertical, 1=4:2:0 colocated, "
+              "2=4:2:2, 3=4:4:4)")
       .def_rw("video_full_range_flag",
-              &PyMp4SampleEntryVp09::video_full_range_flag)
-      .def_rw("colour_primaries", &PyMp4SampleEntryVp09::colour_primaries)
+              &PyMp4SampleEntryVp09::video_full_range_flag,
+              "Full range flag (True=0-255, False=16-235)")
+      .def_rw("colour_primaries", &PyMp4SampleEntryVp09::colour_primaries,
+              "Color primaries (ITU-T H.273, 1=BT.709)")
       .def_rw("transfer_characteristics",
-              &PyMp4SampleEntryVp09::transfer_characteristics)
-      .def_rw("matrix_coefficients",
-              &PyMp4SampleEntryVp09::matrix_coefficients);
+              &PyMp4SampleEntryVp09::transfer_characteristics,
+              "Transfer characteristics (ITU-T H.273, 1=BT.709)")
+      .def_rw("matrix_coefficients", &PyMp4SampleEntryVp09::matrix_coefficients,
+              "Matrix coefficients (ITU-T H.273, 1=BT.709)");
 
-  nb::class_<PyMp4SampleEntryAv01>(m, "Mp4SampleEntryAv01")
+  nb::class_<PyMp4SampleEntryAv01>(
+      m, "Mp4SampleEntryAv01",
+      "AV1 video sample entry.\n\n"
+      "Contains codec configuration for AV1 (AOMedia Video 1).")
       .def(nb::init<>())
       .def(nb::init<uint16_t, uint16_t, uint8_t, uint8_t, nb::bytes, uint8_t,
                     uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, bool,
@@ -1844,99 +1918,165 @@ NB_MODULE(mp4_ext, m) {
            "chroma_subsampling_y"_a = 1, "chroma_sample_position"_a = 0,
            "initial_presentation_delay_present"_a = false,
            "initial_presentation_delay_minus_one"_a = 0)
-      .def_rw("width", &PyMp4SampleEntryAv01::width)
-      .def_rw("height", &PyMp4SampleEntryAv01::height)
-      .def_rw("seq_profile", &PyMp4SampleEntryAv01::seq_profile)
-      .def_rw("seq_level_idx_0", &PyMp4SampleEntryAv01::seq_level_idx_0)
-      .def_rw("seq_tier_0", &PyMp4SampleEntryAv01::seq_tier_0)
-      .def_rw("high_bitdepth", &PyMp4SampleEntryAv01::high_bitdepth)
-      .def_rw("twelve_bit", &PyMp4SampleEntryAv01::twelve_bit)
-      .def_rw("monochrome", &PyMp4SampleEntryAv01::monochrome)
+      .def_rw("width", &PyMp4SampleEntryAv01::width, "Video width in pixels")
+      .def_rw("height", &PyMp4SampleEntryAv01::height, "Video height in pixels")
+      .def_rw("seq_profile", &PyMp4SampleEntryAv01::seq_profile,
+              "Sequence profile (0=Main, 1=High, 2=Professional)")
+      .def_rw("seq_level_idx_0", &PyMp4SampleEntryAv01::seq_level_idx_0,
+              "Sequence level index")
+      .def_rw("seq_tier_0", &PyMp4SampleEntryAv01::seq_tier_0,
+              "Sequence tier (0=Main, 1=High)")
+      .def_rw("high_bitdepth", &PyMp4SampleEntryAv01::high_bitdepth,
+              "High bit depth flag (1=10-bit or higher)")
+      .def_rw("twelve_bit", &PyMp4SampleEntryAv01::twelve_bit, "12-bit flag")
+      .def_rw("monochrome", &PyMp4SampleEntryAv01::monochrome,
+              "Monochrome flag")
       .def_rw("chroma_subsampling_x",
-              &PyMp4SampleEntryAv01::chroma_subsampling_x)
+              &PyMp4SampleEntryAv01::chroma_subsampling_x,
+              "Horizontal chroma subsampling")
       .def_rw("chroma_subsampling_y",
-              &PyMp4SampleEntryAv01::chroma_subsampling_y)
+              &PyMp4SampleEntryAv01::chroma_subsampling_y,
+              "Vertical chroma subsampling")
       .def_rw("chroma_sample_position",
-              &PyMp4SampleEntryAv01::chroma_sample_position)
+              &PyMp4SampleEntryAv01::chroma_sample_position,
+              "Chroma sample position (0=unknown, 1=vertical, 2=colocated)")
       .def_rw("initial_presentation_delay_present",
-              &PyMp4SampleEntryAv01::initial_presentation_delay_present)
+              &PyMp4SampleEntryAv01::initial_presentation_delay_present,
+              "Whether initial presentation delay is present")
       .def_rw("initial_presentation_delay_minus_one",
-              &PyMp4SampleEntryAv01::initial_presentation_delay_minus_one)
-      .def_rw("config_obus", &PyMp4SampleEntryAv01::config_obus);
+              &PyMp4SampleEntryAv01::initial_presentation_delay_minus_one,
+              "Initial presentation delay minus 1")
+      .def_rw("config_obus", &PyMp4SampleEntryAv01::config_obus,
+              "Configuration OBUs (e.g., Sequence Header)");
 
-  nb::class_<PyMp4SampleEntryOpus>(m, "Mp4SampleEntryOpus")
+  nb::class_<PyMp4SampleEntryOpus>(m, "Mp4SampleEntryOpus",
+                                   "Opus audio sample entry.\n\n"
+                                   "Contains codec configuration for Opus.")
       .def(nb::init<>())
       .def(nb::init<uint8_t, uint16_t, uint16_t, uint16_t,
                     std::optional<uint32_t>, int16_t>(),
            "channel_count"_a, "sample_rate"_a, "sample_size"_a = 16,
            "pre_skip"_a = 0, "input_sample_rate"_a = std::nullopt,
            "output_gain"_a = 0)
-      .def_rw("channel_count", &PyMp4SampleEntryOpus::channel_count)
-      .def_rw("sample_rate", &PyMp4SampleEntryOpus::sample_rate)
-      .def_rw("sample_size", &PyMp4SampleEntryOpus::sample_size)
-      .def_rw("pre_skip", &PyMp4SampleEntryOpus::pre_skip)
-      .def_rw("input_sample_rate", &PyMp4SampleEntryOpus::input_sample_rate)
-      .def_rw("output_gain", &PyMp4SampleEntryOpus::output_gain);
+      .def_rw("channel_count", &PyMp4SampleEntryOpus::channel_count,
+              "Number of channels")
+      .def_rw("sample_rate", &PyMp4SampleEntryOpus::sample_rate,
+              "Sample rate (Hz)")
+      .def_rw("sample_size", &PyMp4SampleEntryOpus::sample_size,
+              "Sample size (bits)")
+      .def_rw("pre_skip", &PyMp4SampleEntryOpus::pre_skip,
+              "Pre-skip sample count")
+      .def_rw("input_sample_rate", &PyMp4SampleEntryOpus::input_sample_rate,
+              "Input sample rate (Hz, None if same as sample_rate)")
+      .def_rw("output_gain", &PyMp4SampleEntryOpus::output_gain,
+              "Output gain (dB * 256)");
 
-  nb::class_<PyMp4SampleEntryMp4a>(m, "Mp4SampleEntryMp4a")
+  nb::class_<PyMp4SampleEntryMp4a>(
+      m, "Mp4SampleEntryMp4a",
+      "AAC audio sample entry.\n\n"
+      "Contains codec configuration for AAC (MPEG-4 Audio).")
       .def(nb::init<>())
       .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t, uint32_t, uint32_t,
                     uint32_t>(),
            "channel_count"_a, "sample_rate"_a, "dec_specific_info"_a,
            "sample_size"_a = 16, "buffer_size_db"_a = 0, "max_bitrate"_a = 0,
            "avg_bitrate"_a = 0)
-      .def_rw("channel_count", &PyMp4SampleEntryMp4a::channel_count)
-      .def_rw("sample_rate", &PyMp4SampleEntryMp4a::sample_rate)
-      .def_rw("sample_size", &PyMp4SampleEntryMp4a::sample_size)
-      .def_rw("buffer_size_db", &PyMp4SampleEntryMp4a::buffer_size_db)
-      .def_rw("max_bitrate", &PyMp4SampleEntryMp4a::max_bitrate)
-      .def_rw("avg_bitrate", &PyMp4SampleEntryMp4a::avg_bitrate)
-      .def_rw("dec_specific_info", &PyMp4SampleEntryMp4a::dec_specific_info);
+      .def_rw("channel_count", &PyMp4SampleEntryMp4a::channel_count,
+              "Number of channels")
+      .def_rw("sample_rate", &PyMp4SampleEntryMp4a::sample_rate,
+              "Sample rate (Hz)")
+      .def_rw("sample_size", &PyMp4SampleEntryMp4a::sample_size,
+              "Sample size (bits)")
+      .def_rw("buffer_size_db", &PyMp4SampleEntryMp4a::buffer_size_db,
+              "Buffer size DB")
+      .def_rw("max_bitrate", &PyMp4SampleEntryMp4a::max_bitrate,
+              "Maximum bitrate (bps)")
+      .def_rw("avg_bitrate", &PyMp4SampleEntryMp4a::avg_bitrate,
+              "Average bitrate (bps)")
+      .def_rw("dec_specific_info", &PyMp4SampleEntryMp4a::dec_specific_info,
+              "Decoder specific info (AudioSpecificConfig)");
 
-  nb::class_<PyMp4SampleEntryFlac>(m, "Mp4SampleEntryFlac")
+  nb::class_<PyMp4SampleEntryFlac>(m, "Mp4SampleEntryFlac",
+                                   "FLAC audio sample entry.\n\n"
+                                   "Contains codec configuration for FLAC.")
       .def(nb::init<>())
       .def(nb::init<uint8_t, uint16_t, nb::bytes, uint16_t>(),
            "channel_count"_a, "sample_rate"_a, "streaminfo_data"_a,
            "sample_size"_a = 16)
-      .def_rw("channel_count", &PyMp4SampleEntryFlac::channel_count)
-      .def_rw("sample_rate", &PyMp4SampleEntryFlac::sample_rate)
-      .def_rw("sample_size", &PyMp4SampleEntryFlac::sample_size)
-      .def_rw("streaminfo_data", &PyMp4SampleEntryFlac::streaminfo_data);
+      .def_rw("channel_count", &PyMp4SampleEntryFlac::channel_count,
+              "Number of channels")
+      .def_rw("sample_rate", &PyMp4SampleEntryFlac::sample_rate,
+              "Sample rate (Hz)")
+      .def_rw("sample_size", &PyMp4SampleEntryFlac::sample_size,
+              "Sample size (bits)")
+      .def_rw("streaminfo_data", &PyMp4SampleEntryFlac::streaminfo_data,
+              "FLAC STREAMINFO metadata block");
 
   // トラック情報
-  nb::class_<PyMp4TrackInfo>(m, "Mp4TrackInfo")
+  nb::class_<PyMp4TrackInfo>(
+      m, "Mp4TrackInfo",
+      "MP4 track information.\n\n"
+      "Contains track ID, kind (audio/video), duration, and timescale.")
       .def(nb::init<>())
       .def(nb::init<uint32_t, std::string, uint64_t, uint32_t>(), "track_id"_a,
            "kind"_a, "duration"_a, "timescale"_a)
-      .def_rw("track_id", &PyMp4TrackInfo::track_id)
-      .def_rw("kind", &PyMp4TrackInfo::kind)
-      .def_rw("duration", &PyMp4TrackInfo::duration)
-      .def_rw("timescale", &PyMp4TrackInfo::timescale)
-      .def_prop_ro("duration_seconds", &PyMp4TrackInfo::duration_seconds)
+      .def_rw("track_id", &PyMp4TrackInfo::track_id, "Track ID")
+      .def_rw("kind", &PyMp4TrackInfo::kind, "Track kind ('audio' or 'video')")
+      .def_rw("duration", &PyMp4TrackInfo::duration,
+              "Duration in timescale units")
+      .def_rw("timescale", &PyMp4TrackInfo::timescale,
+              "Timescale (units per second)")
+      .def_prop_ro("duration_seconds", &PyMp4TrackInfo::duration_seconds,
+                   "Duration in seconds")
       .def("__repr__", &PyMp4TrackInfo::repr);
 
   // Demuxer サンプル
-  nb::class_<PyMp4DemuxSample>(m, "Mp4DemuxSample")
+  nb::class_<PyMp4DemuxSample>(
+      m, "Mp4DemuxSample",
+      "Sample retrieved from a demultiplexer.\n\n"
+      "Contains track information, timestamp, and data.\n"
+      "The data property is lazily loaded from the file on access.")
       .def(nb::init<>())
       .def(nb::init<PyMp4TrackInfo, nb::object, bool, uint64_t, uint32_t,
                     uint64_t, uint64_t, nb::object>(),
            "track"_a, "sample_entry"_a, "keyframe"_a, "timestamp"_a,
            "duration"_a, "data_offset"_a, "data_size"_a, "input_stream"_a)
-      .def_ro("track", &PyMp4DemuxSample::track)
-      .def_ro("sample_entry", &PyMp4DemuxSample::sample_entry)
-      .def_ro("keyframe", &PyMp4DemuxSample::keyframe)
-      .def_ro("timestamp", &PyMp4DemuxSample::timestamp)
-      .def_ro("duration", &PyMp4DemuxSample::duration)
-      .def_prop_ro("data", &PyMp4DemuxSample::get_data, nb::lock_self())
-      .def_prop_ro("timestamp_seconds", &PyMp4DemuxSample::timestamp_seconds)
-      .def_prop_ro("duration_seconds", &PyMp4DemuxSample::duration_seconds)
+      .def_ro("track", &PyMp4DemuxSample::track,
+              "Track information for this sample")
+      .def_ro("sample_entry", &PyMp4DemuxSample::sample_entry,
+              "Sample entry (codec configuration)")
+      .def_ro("keyframe", &PyMp4DemuxSample::keyframe,
+              "Whether this is a keyframe")
+      .def_ro("timestamp", &PyMp4DemuxSample::timestamp,
+              "Timestamp in timescale units")
+      .def_ro("duration", &PyMp4DemuxSample::duration,
+              "Duration in timescale units")
+      .def_prop_ro("data", &PyMp4DemuxSample::get_data, nb::lock_self(),
+                   "Sample data (bytes)")
+      .def_prop_ro("timestamp_seconds", &PyMp4DemuxSample::timestamp_seconds,
+                   "Timestamp in seconds")
+      .def_prop_ro("duration_seconds", &PyMp4DemuxSample::duration_seconds,
+                   "Duration in seconds")
       .def("__repr__", &PyMp4DemuxSample::repr);
 
   // Demuxer
-  nb::class_<PyMp4FileDemuxer>(m, "Mp4FileDemuxer")
-      .def(nb::init<nb::object>(), "source"_a)
-      .def("close", &PyMp4FileDemuxer::close)
-      .def_prop_ro("tracks", &PyMp4FileDemuxer::get_tracks)
+  nb::class_<PyMp4FileDemuxer>(
+      m, "Mp4FileDemuxer",
+      "Demultiplexer for reading MP4 files.\n\n"
+      "Reads MP4 data from a file path or file-like object and allows\n"
+      "iteration over samples. Supports the context manager protocol.\n\n"
+      "Example:\n"
+      "    with Mp4FileDemuxer('input.mp4') as demuxer:\n"
+      "        for sample in demuxer:\n"
+      "            print(sample.track.kind, sample.timestamp)")
+      .def(nb::init<nb::object>(), "source"_a,
+           "Create a demultiplexer.\n\n"
+           "Args:\n"
+           "    source: File path (str/Path) or file-like object")
+      .def("close", &PyMp4FileDemuxer::close,
+           "Close the demultiplexer and release resources")
+      .def_prop_ro("tracks", &PyMp4FileDemuxer::get_tracks,
+                   "List of track information in the MP4 file")
       .def(
           "__enter__",
           [](PyMp4FileDemuxer& self) -> PyMp4FileDemuxer& { return self; },
@@ -1947,37 +2087,74 @@ NB_MODULE(mp4_ext, m) {
       .def("__next__", &PyMp4FileDemuxer::next);
 
   // Muxer オプション
-  nb::class_<PyMp4FileMuxerOptions>(m, "Mp4FileMuxerOptions")
+  nb::class_<PyMp4FileMuxerOptions>(
+      m, "Mp4FileMuxerOptions",
+      "Multiplexer options.\n\n"
+      "Allows reserving moov box size for streaming output.")
       .def(nb::init<>())
       .def(nb::init<uint64_t>(), "reserved_moov_box_size"_a = 0)
       .def_rw("reserved_moov_box_size",
-              &PyMp4FileMuxerOptions::reserved_moov_box_size)
+              &PyMp4FileMuxerOptions::reserved_moov_box_size,
+              "Reserved moov box size in bytes")
       .def_static("estimate_maximum_moov_box_size",
                   &PyMp4FileMuxerOptions::estimate_maximum_moov_box_size,
-                  "audio_sample_count"_a, "video_sample_count"_a);
+                  "audio_sample_count"_a, "video_sample_count"_a,
+                  "Estimate maximum moov box size.\n\n"
+                  "Args:\n"
+                  "    audio_sample_count: Number of audio samples\n"
+                  "    video_sample_count: Number of video samples\n\n"
+                  "Returns:\n"
+                  "    Estimated size in bytes");
 
   // Muxer サンプル
-  nb::class_<PyMp4MuxSample>(m, "Mp4MuxSample")
+  nb::class_<PyMp4MuxSample>(
+      m, "Mp4MuxSample",
+      "Sample to add to the multiplexer.\n\n"
+      "Specifies track kind, codec configuration, timestamp, and data.")
       .def(nb::init<>())
       .def(nb::init<std::string, nb::object, bool, uint32_t, uint32_t,
                     nb::bytes>(),
            "track_kind"_a, "sample_entry"_a, "keyframe"_a, "timescale"_a,
            "duration"_a, "data"_a)
-      .def_rw("track_kind", &PyMp4MuxSample::track_kind)
-      .def_rw("sample_entry", &PyMp4MuxSample::sample_entry)
-      .def_rw("keyframe", &PyMp4MuxSample::keyframe)
-      .def_rw("timescale", &PyMp4MuxSample::timescale)
-      .def_rw("duration", &PyMp4MuxSample::duration)
-      .def_rw("data", &PyMp4MuxSample::data)
+      .def_rw("track_kind", &PyMp4MuxSample::track_kind,
+              "Track kind ('audio' or 'video')")
+      .def_rw("sample_entry", &PyMp4MuxSample::sample_entry,
+              "Sample entry (codec configuration)")
+      .def_rw("keyframe", &PyMp4MuxSample::keyframe,
+              "Whether this is a keyframe")
+      .def_rw("timescale", &PyMp4MuxSample::timescale,
+              "Timescale (units per second)")
+      .def_rw("duration", &PyMp4MuxSample::duration,
+              "Duration in timescale units")
+      .def_rw("data", &PyMp4MuxSample::data, "Sample data (bytes)")
       .def("__repr__", &PyMp4MuxSample::repr);
 
   // Muxer
-  nb::class_<PyMp4FileMuxer>(m, "Mp4FileMuxer")
+  nb::class_<PyMp4FileMuxer>(
+      m, "Mp4FileMuxer",
+      "Multiplexer for writing MP4 files.\n\n"
+      "Appends samples to create an MP4 file. Supports the context manager\n"
+      "protocol. finalize() is called automatically when exiting a with "
+      "block.\n\n"
+      "Example:\n"
+      "    with Mp4FileMuxer('output.mp4') as muxer:\n"
+      "        muxer.append_sample(sample)")
       .def(nb::init<nb::object, std::optional<PyMp4FileMuxerOptions>>(),
-           "destination"_a, "options"_a = nb::none())
-      .def("close", &PyMp4FileMuxer::close)
-      .def("append_sample", &PyMp4FileMuxer::append_sample, "sample"_a)
-      .def("finalize", &PyMp4FileMuxer::finalize)
+           "destination"_a, "options"_a = nb::none(),
+           "Create a multiplexer.\n\n"
+           "Args:\n"
+           "    destination: Output file path (str/Path) or file-like object\n"
+           "    options: Multiplexer options (optional)")
+      .def("close", &PyMp4FileMuxer::close,
+           "Close the multiplexer and release resources")
+      .def("append_sample", &PyMp4FileMuxer::append_sample, "sample"_a,
+           "Append a sample.\n\n"
+           "Args:\n"
+           "    sample: Sample to append (Mp4MuxSample)")
+      .def("finalize", &PyMp4FileMuxer::finalize,
+           "Finalize the MP4 file.\n\n"
+           "Writes the moov box to complete the MP4 file.\n"
+           "Called automatically when using a with statement.")
       .def(
           "__enter__",
           [](PyMp4FileMuxer& self) -> PyMp4FileMuxer& { return self; },
