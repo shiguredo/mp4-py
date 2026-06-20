@@ -1,42 +1,52 @@
-[build-system]
-requires = ["scikit-build-core", "nanobind>=2.10.2"]
-build-backend = "scikit_build_core.build"
-
 [project]
 name = "mp4-py"
-authors = [{ name = "Shiguredo Inc.", email = "contact+pypi@shiguredo.jp" }]
-dynamic = ["version"]
 description = "Python bindings for mp4-rust"
 readme = "README.md"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+authors = [{ name = "Shiguredo Inc.", email = "contact+pypi@shiguredo.jp" }]
 classifiers = [
-    "Programming Language :: C",
-    "Programming Language :: C++",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Programming Language :: Python :: Free Threading :: 2 - Beta",
-    "Operating System :: MacOS :: MacOS X",
-    "Operating System :: POSIX :: Linux",
-    "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Free Threading :: 2 - Beta",
 ]
-requires-python = ">=3.12"
 dependencies = []
+dynamic = ["version"]
 
 [project.urls]
-Source = "https://github.com/shiguredo/mp4-py"
 Discord = "https://discord.gg/shiguredo"
+Source = "https://github.com/shiguredo/mp4-py"
 
 [dependency-groups]
-dev = [{ include-group = "test" }, { include-group = "lint" }]
-test = ["pytest", "pytest-timeout", "hypothesis"]
+dev = [{ include-group = "lint" }, { include-group = "test" }]
 lint = ["ruff", "ty"]
+test = ["hypothesis", "pytest", "pytest-timeout"]
+
+[build-system]
+requires = ["nanobind>=2.13.0", "scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[tool.pytest.ini_options]
+# Property-Based Testing (PBT) は prop_ prefix を使用する
+python_files = ["test_*.py", "prop_*.py"]
+python_functions = ["test_*", "prop_*"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
 
 [tool.scikit-build]
-minimum-version = "0.11.3"
+minimum-version = "0.12.2"
 sdist.include = ["VERSION"]
 build-dir = "_build"
 
@@ -58,13 +68,3 @@ regex = "^(?P<value>.+)$"
 package = false
 managed = true
 python-preference = "only-managed"
-
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-# Property-Based Testing (PBT) は prop_ prefix を使用する
-python_files = ["test_*.py", "prop_*.py"]
-python_functions = ["test_*", "prop_*"]

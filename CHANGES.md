@@ -11,7 +11,21 @@
 
 ## develop
 
+- [UPDATE] nanobind を 2.13.0 以上に上げる
+  - @voluntas
+- [UPDATE] scikit-build-core を 0.12.2 以上に上げる
+  - @voluntas
+
 ### misc
+
+- [UPDATE] hypothesis を 6.155.6 に上げる
+  - @voluntas
+- [UPDATE] pytest を 9.1.1 に上げる
+  - @voluntas
+- [UPDATE] ruff を 0.15.18 に上げる
+  - @voluntas
+- [UPDATE] ty を 0.0.51 に上げる
+  - @voluntas
 
 ## 2026.1.0
 
