@@ -689,6 +689,8 @@ class PyMp4DemuxSample {
   bool keyframe = false;
   uint64_t timestamp = 0;
   uint32_t duration = 0;
+  // ctts / trun 由来のコンポジション時間オフセット (未設定なら None)
+  std::optional<int64_t> composition_time_offset;
 
   // 遅延読み込み用
   nb::object input_stream_;
@@ -704,12 +706,14 @@ class PyMp4DemuxSample {
                    uint32_t duration_,
                    uint64_t data_offset_,
                    uint64_t data_size_,
-                   const nb::object& input_stream_)
+                   const nb::object& input_stream_,
+                   std::optional<int64_t> composition_time_offset_)
       : track(track_),
         sample_entry(sample_entry_),
         keyframe(keyframe_),
         timestamp(timestamp_),
         duration(duration_),
+        composition_time_offset(composition_time_offset_),
         input_stream_(input_stream_),
         data_offset_(data_offset_),
         data_size_(data_size_) {}
@@ -881,6 +885,9 @@ class PyMp4FileDemuxer {
       result.keyframe = raw_sample.keyframe;
       result.timestamp = raw_sample.timestamp;
       result.duration = raw_sample.duration;
+      if (raw_sample.has_composition_time_offset) {
+        result.composition_time_offset = raw_sample.composition_time_offset;
+      }
       result.input_stream_ = input_stream_;
       result.data_offset_ = raw_sample.data_offset;
       result.data_size_ = raw_sample.data_size;
@@ -1005,10 +1012,10 @@ class PyMp4FileDemuxer {
 // ===== Muxer オプション =====
 
 struct PyMp4FileMuxerOptions {
-  uint64_t reserved_moov_box_size = 0;
+  uint32_t reserved_moov_box_size = 0;
 
   PyMp4FileMuxerOptions() = default;
-  PyMp4FileMuxerOptions(uint64_t reserved_moov_box_size_)
+  PyMp4FileMuxerOptions(uint32_t reserved_moov_box_size_)
       : reserved_moov_box_size(reserved_moov_box_size_) {}
 
   static uint32_t estimate_maximum_moov_box_size(uint32_t audio_sample_count,
@@ -1026,6 +1033,8 @@ struct PyMp4MuxSample {
   bool keyframe = false;
   uint32_t timescale = 0;
   uint32_t duration = 0;
+  // ctts / trun に出力するコンポジション時間オフセット (未設定なら出力しない)
+  std::optional<int64_t> composition_time_offset;
   nb::bytes data;
 
   PyMp4MuxSample() = default;
@@ -1034,12 +1043,14 @@ struct PyMp4MuxSample {
                  bool keyframe_,
                  uint32_t timescale_,
                  uint32_t duration_,
-                 const nb::bytes& data_)
+                 const nb::bytes& data_,
+                 std::optional<int64_t> composition_time_offset_)
       : track_kind(track_kind_),
         sample_entry(sample_entry_),
         keyframe(keyframe_),
         timescale(timescale_),
         duration(duration_),
+        composition_time_offset(composition_time_offset_),
         data(data_) {}
 
   std::string repr() const {
@@ -1468,6 +1479,10 @@ class PyMp4FileMuxer {
     raw_sample.keyframe = sample.keyframe;
     raw_sample.timescale = sample.timescale;
     raw_sample.duration = sample.duration;
+    raw_sample.has_composition_time_offset =
+        sample.composition_time_offset.has_value();
+    raw_sample.composition_time_offset =
+        sample.composition_time_offset.value_or(0);
     raw_sample.data_offset = data_offset;
     raw_sample.data_size = static_cast<uint32_t>(sample.data.size());
 
@@ -2038,9 +2053,10 @@ NB_MODULE(mp4_ext, m) {
       "The data property is lazily loaded from the file on access.")
       .def(nb::init<>())
       .def(nb::init<PyMp4TrackInfo, nb::object, bool, uint64_t, uint32_t,
-                    uint64_t, uint64_t, nb::object>(),
+                    uint64_t, uint64_t, nb::object, std::optional<int64_t>>(),
            "track"_a, "sample_entry"_a, "keyframe"_a, "timestamp"_a,
-           "duration"_a, "data_offset"_a, "data_size"_a, "input_stream"_a)
+           "duration"_a, "data_offset"_a, "data_size"_a, "input_stream"_a,
+           "composition_time_offset"_a = nb::none())
       .def_ro("track", &PyMp4DemuxSample::track,
               "Track information for this sample")
       .def_ro("sample_entry", &PyMp4DemuxSample::sample_entry,
@@ -2051,6 +2067,10 @@ NB_MODULE(mp4_ext, m) {
               "Timestamp in timescale units")
       .def_ro("duration", &PyMp4DemuxSample::duration,
               "Duration in timescale units")
+      .def_ro("composition_time_offset",
+              &PyMp4DemuxSample::composition_time_offset,
+              "Composition time offset in timescale units "
+              "(None if absent). PTS = timestamp + composition_time_offset.")
       .def_prop_ro("data", &PyMp4DemuxSample::get_data, nb::lock_self(),
                    "Sample data (bytes)")
       .def_prop_ro("timestamp_seconds", &PyMp4DemuxSample::timestamp_seconds,
@@ -2092,7 +2112,7 @@ NB_MODULE(mp4_ext, m) {
       "Multiplexer options.\n\n"
       "Allows reserving moov box size for streaming output.")
       .def(nb::init<>())
-      .def(nb::init<uint64_t>(), "reserved_moov_box_size"_a = 0)
+      .def(nb::init<uint32_t>(), "reserved_moov_box_size"_a = 0)
       .def_rw("reserved_moov_box_size",
               &PyMp4FileMuxerOptions::reserved_moov_box_size,
               "Reserved moov box size in bytes")
@@ -2113,9 +2133,10 @@ NB_MODULE(mp4_ext, m) {
       "Specifies track kind, codec configuration, timestamp, and data.")
       .def(nb::init<>())
       .def(nb::init<std::string, nb::object, bool, uint32_t, uint32_t,
-                    nb::bytes>(),
+                    nb::bytes, std::optional<int64_t>>(),
            "track_kind"_a, "sample_entry"_a, "keyframe"_a, "timescale"_a,
-           "duration"_a, "data"_a)
+           "duration"_a, "data"_a,
+           "composition_time_offset"_a = nb::none())
       .def_rw("track_kind", &PyMp4MuxSample::track_kind,
               "Track kind ('audio' or 'video')")
       .def_rw("sample_entry", &PyMp4MuxSample::sample_entry,
@@ -2126,6 +2147,10 @@ NB_MODULE(mp4_ext, m) {
               "Timescale (units per second)")
       .def_rw("duration", &PyMp4MuxSample::duration,
               "Duration in timescale units")
+      .def_rw("composition_time_offset",
+              &PyMp4MuxSample::composition_time_offset,
+              "Composition time offset in timescale units "
+              "(None to omit). PTS = DTS + composition_time_offset.")
       .def_rw("data", &PyMp4MuxSample::data, "Sample data (bytes)")
       .def("__repr__", &PyMp4MuxSample::repr);
 

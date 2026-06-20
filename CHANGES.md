@@ -11,6 +11,17 @@
 
 ## develop
 
+- [CHANGE] `Mp4FileMuxerOptions.reserved_moov_box_size` を `uint32` で受け取るようにする
+  - mp4-rust 2026.2.0 の C API 型変更 (`u64` → `u32`) に追従する
+  - @voluntas
+- [ADD] `Mp4DemuxSample` に `composition_time_offset` プロパティを追加する
+  - `ctts` / `trun` 由来のコンポジション時間オフセットを `int | None` で参照できる
+  - @voluntas
+- [ADD] `Mp4MuxSample` に `composition_time_offset` 引数とプロパティを追加する
+  - 指定した場合は `ctts` ボックスを生成する
+  - @voluntas
+- [UPDATE] mp4-rust を 2026.3.0 に上げる
+  - @voluntas
 - [UPDATE] nanobind を 2.13.0 以上に上げる
   - @voluntas
 - [UPDATE] scikit-build-core を 0.12.2 以上に上げる

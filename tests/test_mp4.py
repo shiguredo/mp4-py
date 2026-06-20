@@ -610,6 +610,83 @@ def test_demux_sample_properties():
 
     assert demux_sample.timestamp_seconds == 0.5
     assert abs(demux_sample.duration_seconds - 0.033333) < 0.0001
+    # composition_time_offset を省略した場合は None
+    assert demux_sample.composition_time_offset is None
+
+
+def test_demux_sample_composition_time_offset():
+    """DemuxSample に composition_time_offset を指定した場合の保持を確認"""
+    track = Mp4TrackInfo(
+        track_id=1,
+        kind="video",
+        duration=5000000,
+        timescale=1000000,
+    )
+    sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
+
+    demux_sample = Mp4DemuxSample(
+        track=track,
+        sample_entry=sample_entry,
+        keyframe=True,
+        timestamp=500000,
+        duration=33333,
+        data_offset=0,
+        data_size=4,
+        input_stream=io.BytesIO(b"test"),
+        composition_time_offset=-200,
+    )
+
+    assert demux_sample.composition_time_offset == -200
+
+
+def test_mux_sample_composition_time_offset_default():
+    """MuxSample の composition_time_offset を省略した場合は None"""
+    sample_entry = Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT)
+    mux_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    assert mux_sample.composition_time_offset is None
+
+
+def test_mux_demux_roundtrip_with_composition_time_offset():
+    """composition_time_offset を指定した mux → demux のラウンドトリップ"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    # 映像サンプルに ctts 出力用のオフセットを付与
+    expected_offsets = [0, 1000, 2000]
+    for i, offset in enumerate(expected_offsets):
+        mux_sample = Mp4MuxSample(
+            track_kind="video",
+            sample_entry=Mp4SampleEntryAvc1(
+                width=VIDEO_WIDTH,
+                height=VIDEO_HEIGHT,
+                avc_profile_indication=0x42,
+                avc_level_indication=0x29,
+                profile_compatibility=0xC0,
+                sps_data=[bytes([0x67, 0x42, 0x00, 0x1E])],
+                pps_data=[bytes([0x68, 0xCE, 0x38, 0x80])],
+            ),
+            keyframe=(i == 0),
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(i),
+            composition_time_offset=offset,
+        )
+        muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # ラウンドトリップで読み出し
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    actual_offsets = [sample.composition_time_offset for sample in demuxer]
+
+    assert actual_offsets == expected_offsets
 
 
 def test_options_default_values():
