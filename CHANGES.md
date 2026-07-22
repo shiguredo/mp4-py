@@ -41,6 +41,8 @@
   - @voluntas
 - [UPDATE] pytest を 9.1.1 に上げる
   - @voluntas
+- [UPDATE] `build-system.requires` の maturin バージョン下限を `1.14` に引き上げる
+  - @voluntas
 
 ## 2026.1.0
 

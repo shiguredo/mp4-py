@@ -32,15 +32,15 @@ lint = ["ruff", "ty"]
 test = ["hypothesis", "pytest", "pytest-timeout"]
 
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires = ["maturin>=1.14,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
+features = ["pyo3/extension-module", "pyo3/experimental-inspect"]
+manifest-path = "Cargo.toml"
 # 拡張モジュールは Python パッケージ mp4 内の mp4_ext として配置する。
 module-name = "mp4.mp4_ext"
 python-source = "python"
-features = ["pyo3/extension-module", "pyo3/experimental-inspect"]
-manifest-path = "Cargo.toml"
 
 [tool.pytest.ini_options]
 # Property-Based Testing (PBT) は prop_ prefix を使用する
