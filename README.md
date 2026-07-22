@@ -24,19 +24,17 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 
 - macOS 26 arm64
 - macOS 15 arm64
-- Ubuntu 24.04 x86_64
-- Ubuntu 24.04 arm64
-- Ubuntu 22.04 x86_64
-- Ubuntu 22.04 arm64
+- Ubuntu 24.04 x86_64 (manylinux2014 wheel は glibc 2.17+ 対応)
+- Ubuntu 24.04 arm64 (manylinux2014 wheel は glibc 2.17+ 対応)
 - Windows Server 2025 x86_64
 - Windows 11 x86_64
 
 ## 対応 Python
 
-- 3.14
-- 3.14t
-- 3.13
-- 3.12
+- 3.14 (abi3 wheel: 3.12/3.13/3.14 共通)
+- 3.14t (Free-Threading, 専用 wheel)
+- 3.13 (abi3 wheel)
+- 3.12 (abi3 wheel)
 
 ## インストール
 
@@ -149,11 +147,26 @@ uv run python examples/demux.py input.mp4
 uv run python examples/remux.py input.mp4 output.mp4
 ```
 
-## ビルド
+## 開発ビルド
 
 ```bash
-uv build --wheel
+# maturin をインストール
+uv pip install maturin
+
+# 開発ビルド (editable install)
+maturin develop --release
+
+# wheel を生成
+maturin build --release --out wheelhouse --generate-stubs
+
+# テスト
+uv pip install pytest pytest-timeout hypothesis
+uv run pytest tests/ --timeout=30
 ```
+
+Rust 側は `Cargo.toml` の `shiguredo_mp4 = { path = "../mp4-rs" }` で
+`shiguredo/mp4-rs` を path 依存している。ローカル開発時は当該リポジトリの
+チェックアウトが必要。リリース時は git 依存 + tag 固定に切り替える。
 
 ## mp4-rust ライセンス
 

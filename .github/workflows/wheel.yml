@@ -1,30 +1,41 @@
 name: wheel
 
+# maturin + PyO3 ベースの wheel ビルドと公開。
+# タグ 202* が push されたら PyPI と GitHub Release に公開する。
 on:
   workflow_dispatch:
   push:
-    paths-ignore:
-      - "**.md"
-      - "test/**"
+    paths:
+      - "src/**"
+      - "python/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "pyproject.toml"
+      - ".github/workflows/wheel.yml"
+    tags:
+      - "202*"
 
 permissions:
   contents: write
   actions: read
 
 jobs:
-  build_macos:
+  # ==========================================================================
+  # abi3 wheel: Python 3.12+ GIL 有効ビルドで 1 wheel が 3.12/3.13/3.14 全てで使える
+  # ==========================================================================
+  build_abi3_macos:
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - name: macos-26_arm64
             runs_on: macos-26
+            target: aarch64-apple-darwin
           - name: macos-15_arm64
             runs_on: macos-15
-        python_version:
-          - "3.14"
-          - "3.14t"
-          - "3.13"
-          - "3.12"
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
     steps:
@@ -32,40 +43,100 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: false
-          python-version: ${{ matrix.python_version }}
-      - name: Build wheel
-        run: uv build --wheel --out-dir wheelhouse
-      - name: Install wheel and run tests
-        run: |
-          uv sync --only-group test
-          uv pip install wheelhouse/*.whl --reinstall
-          uv run --group test pytest --timeout=60
-        env:
-          NO_UV_SYNC: 1
-      - name: Upload wheels
-        uses: actions/upload-artifact@v6
+          python-version: "3.12"
+      - name: Build wheel (abi3)
+        uses: PyO3/maturin-action@v1
         with:
-          name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
+          target: ${{ matrix.platform.target }}
+          args: --release --out wheelhouse --generate-stubs --compatibility off
+          rust-toolchain: stable
+      - name: Test wheel on Python 3.12/3.13/3.14
+        run: |
+          for py in 3.12 3.13 3.14; do
+            uv venv --python "$py" ".venv-$py"
+            uv pip install --python ".venv-$py/bin/python" wheelhouse/*.whl pytest pytest-timeout hypothesis
+            NO_UV_SYNC=1 ".venv-$py/bin/pytest" tests/ --timeout=30 -q
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.platform.name }}_abi3
           path: wheelhouse/*.whl
 
-  build_ubuntu:
+  build_abi3_ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - runs_on: ubuntu-24.04
+            arch: x86_64
+          - runs_on: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.target.runs_on }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build wheel (abi3, manylinux2014)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target.arch }}
+          args: --release --out wheelhouse --generate-stubs --compatibility manylinux2014
+          manylinux: auto
+          rust-toolchain: stable
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+          python-version: "3.14"
+      - name: Test wheel
+        run: |
+          uv venv --python 3.14 .venv
+          uv pip install --python .venv/bin/python wheelhouse/*.whl pytest pytest-timeout hypothesis
+          NO_UV_SYNC=1 .venv/bin/pytest tests/ --timeout=30 -q
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-ubuntu_${{ matrix.target.arch }}_abi3
+          path: wheelhouse/*.whl
+
+  build_abi3_windows:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+          python-version: "3.12"
+      - name: Build wheel (abi3)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-pc-windows-msvc
+          args: --release --out wheelhouse --generate-stubs --compatibility off
+          rust-toolchain: stable
+      - name: Test wheel
+        shell: bash
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/Scripts/python.exe wheelhouse/*.whl pytest pytest-timeout hypothesis
+          NO_UV_SYNC=1 .venv/Scripts/pytest tests/ --timeout=30 -q
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-windows_x86_64_abi3
+          path: wheelhouse/*.whl
+
+  # ==========================================================================
+  # Free-Threading wheel: Python 3.14t 専用 (PyO3 0.29 は 3.13t 非対応)
+  # abi3 が使えないため Python バージョン毎のビルドが必要
+  # ==========================================================================
+  build_ft_macos:
     strategy:
       fail-fast: false
       matrix:
         platform:
-          - name: ubuntu-24.04_x86_64
-            runs_on: ubuntu-24.04
-          - name: ubuntu-24.04_arm64
-            runs_on: ubuntu-24.04-arm
-          - name: ubuntu-22.04_x86_64
-            runs_on: ubuntu-22.04
-          - name: ubuntu-22.04_arm64
-            runs_on: ubuntu-22.04-arm
-        python_version:
-          - "3.14"
-          - "3.14t"
-          - "3.13"
-          - "3.12"
+          - name: macos-26_arm64
+            runs_on: macos-26
+            target: aarch64-apple-darwin
+          - name: macos-15_arm64
+            runs_on: macos-15
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
     steps:
@@ -73,86 +144,104 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: false
-          python-version: ${{ matrix.python_version }}
-
-      - name: Build wheel
-        run: uv build --wheel
-
-      - name: Install wheel and run tests
-        run: |
-          uv sync --only-group test
-          uv pip install dist/*.whl --reinstall
-          uv run --group test pytest --timeout=60
-        env:
-          NO_UV_SYNC: 1
-      - name: Repair wheel with auditwheel
-        shell: bash
-        run: |
-          uvx auditwheel repair dist/*.whl --strip --only-plat
-      - name: Upload Repaired Wheels
-        uses: actions/upload-artifact@v6
+          python-version: "3.14t"
+      - name: Build wheel (Free-Threading)
+        uses: PyO3/maturin-action@v1
         with:
-          name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
+          target: ${{ matrix.platform.target }}
+          args: >-
+            --release --out wheelhouse --generate-stubs --compatibility off
+            --interpreter python3.14t
+          rust-toolchain: stable
+      - name: Test wheel (3.14t)
+        run: |
+          uv pip install --system wheelhouse/*.whl pytest pytest-timeout
+          NO_UV_SYNC=1 pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.platform.name }}_ft-3.14t
           path: wheelhouse/*.whl
 
-  build_windows:
+  build_ft_ubuntu:
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - name: windows-2025_x86_64
-            runs_on: windows-2025
-        python_version:
-          - "3.14"
-          - "3.14t"
-          - "3.13"
-          - "3.12"
-    runs-on: ${{ matrix.platform.runs_on }}
+        target:
+          - runs_on: ubuntu-24.04
+            arch: x86_64
+          - runs_on: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.target.runs_on }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build wheel (Free-Threading, manylinux2014)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target.arch }}
+          args: >-
+            --release --out wheelhouse --generate-stubs --compatibility manylinux2014
+            --interpreter python3.14t
+          manylinux: auto
+          rust-toolchain: stable
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-ubuntu_${{ matrix.target.arch }}_ft-3.14t
+          path: wheelhouse/*.whl
+
+  build_ft_windows:
+    runs-on: windows-2025
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          enable-cache: true
-          python-version: ${{ matrix.python_version }}
-      - name: Build wheel
-        run: uv build --wheel --out-dir wheelhouse
-      - name: Install wheel and run tests
-        shell: bash
-        run: |
-          uv sync --only-group test
-          uv pip install wheelhouse/*.whl --reinstall
-          uv run --group test pytest --timeout=60
-        env:
-          NO_UV_SYNC: 1
-      - name: Upload Wheels
-        uses: actions/upload-artifact@v6
+          enable-cache: false
+          python-version: "3.14t"
+      - name: Build wheel (Free-Threading)
+        uses: PyO3/maturin-action@v1
         with:
-          name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
+          target: x86_64-pc-windows-msvc
+          args: >-
+            --release --out wheelhouse --generate-stubs --compatibility off
+            --interpreter python3.14t
+          rust-toolchain: stable
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-windows_x86_64_ft-3.14t
           path: wheelhouse/*.whl
 
-  publish_wheel:
+  # ==========================================================================
+  # sdist (ソース配布)
+  # ==========================================================================
+  build_sdist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out wheelhouse
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sdist
+          path: wheelhouse/*.tar.gz
+
+  # ==========================================================================
+  # PyPI 公開 (タグ 202* のみ)
+  # ==========================================================================
+  publish_pypi:
     if: contains(github.ref, 'tags/202')
     needs:
-      - build_ubuntu
-      - build_macos
-      - build_windows
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - name: ubuntu-24.04_x86_64
-          - name: ubuntu-24.04_arm64
-          - name: ubuntu-22.04_x86_64
-          - name: ubuntu-22.04_arm64
-          # - name: macos-26_arm64
-          - name: macos-15_arm64
-          - name: windows-2025_x86_64
-        python_version:
-          - "3.14"
-          - "3.14t"
-          - "3.13"
-          - "3.12"
+      - build_abi3_macos
+      - build_abi3_ubuntu
+      - build_abi3_windows
+      - build_ft_macos
+      - build_ft_ubuntu
+      - build_ft_windows
+      - build_sdist
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: pypi
@@ -161,31 +250,47 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: ${{ matrix.platform.name }}_python-${{ matrix.python_version }}
-          path: wheelhouse/
-      - name: Publish package to PyPI
+          pattern: wheels-*
+          path: dist/
+          merge-multiple: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: sdist
+          path: dist/
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: wheelhouse
+          packages-dir: dist
 
-  create-release:
+  # ==========================================================================
+  # GitHub Release 作成 (タグ 202* のみ)
+  # ==========================================================================
+  create_release:
     if: contains(github.ref, 'tags/202')
     needs:
-      - build_ubuntu
-      - build_macos
-      - build_windows
-    runs-on: ubuntu-slim
-    timeout-minutes: 60
+      - build_abi3_macos
+      - build_abi3_ubuntu
+      - build_abi3_windows
+      - build_ft_macos
+      - build_ft_ubuntu
+      - build_ft_windows
+      - build_sdist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
-      - name: Download all artifacts
-        uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts/
-      - name: Create release files list
+      - name: Collect release files
         run: |
-          find artifacts -name "*.whl" -type f > release_files.txt
+          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) > release_files.txt
+          wc -l release_files.txt
       - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "${{ github.ref }}" == *"dev"* ]]; then
             gh release create ${{ github.ref_name }} \
@@ -197,5 +302,3 @@ jobs:
               --title "${{ github.ref_name }}" \
               $(cat release_files.txt | xargs)
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}

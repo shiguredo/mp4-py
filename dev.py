@@ -1,70 +1,65 @@
+"""canary リリース用の version bump スクリプト。
+
+Cargo.toml の [package] version を対象に、`.devN` を +1 する
+(なければ次のマイナー版に `.dev0` を付ける)。
+更新後 Cargo.lock を再生成し、git commit + tag + push まで行う。
+"""
+
 import argparse
+import re
 import subprocess
 from typing import Optional
 
+CARGO_TOML = "Cargo.toml"
+# Cargo.toml の `version = "..."` 行を対象にする正規表現。
+# [package] セクション先頭の 1 個目のみを差し替えるため、非欲張り一致で先頭優先。
+VERSION_RE = re.compile(r'^(version\s*=\s*)"([^"]+)"', re.MULTILINE)
 
-# ファイルを読み込み、バージョンを更新
-def update_version(file_path: str, dry_run: bool) -> Optional[str]:
-    with open(file_path, "r", encoding="utf-8") as f:
-        current_version: str = f.read().strip()
 
-    # バージョンが .devX を持っている場合の更新
-    if ".dev" in current_version:
-        # dev バージョンをインクリメント
-        base_version, dev_suffix = current_version.rsplit(".dev", 1)
-        new_version = f"{base_version}.dev{int(dev_suffix) + 1}"
-    else:
-        # .devX がない場合、次のマイナーバージョンにして .dev0 を追加
-        parts = current_version.split(".")
-        if len(parts) != 3:
-            raise ValueError("Version format in VERSION file is not X.Y.Z")
-        major, minor, patch = map(int, parts)
-        new_version = f"{major}.{minor + 1}.0.dev0"
+def read_version(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    match = VERSION_RE.search(text)
+    if match is None:
+        raise ValueError(f"'version = \"...\"' が {path} に見つからない")
+    return match.group(2)
 
-    print(f"Current version: {current_version}")
-    print(f"New version: {new_version}")
-    confirmation: str = input("Do you want to update the version? (Y/n): ").strip().lower()
 
-    if confirmation != "y":
-        print("Version update canceled.")
-        return None
+def bump(current: str) -> str:
+    if ".dev" in current:
+        base, dev = current.rsplit(".dev", 1)
+        return f"{base}.dev{int(dev) + 1}"
+    parts = current.split(".")
+    if len(parts) != 3:
+        raise ValueError(f"Cargo.toml の version 形式が X.Y.Z ではない: {current}")
+    major, minor, _patch = map(int, parts)
+    return f"{major}.{minor + 1}.0.dev0"
 
-    # Dry-run 時の動作
+
+def write_version(path: str, new_version: str) -> None:
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    # 最初にマッチした version 行だけを差し替える (dependencies の version は無視)
+    replaced = VERSION_RE.sub(rf'\g<1>"{new_version}"', text, count=1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(replaced)
+
+
+def update_cargo_lock(dry_run: bool) -> None:
     if dry_run:
-        print("Dry-run: Version would be updated to:")
-        print(new_version)
+        print("Dry-run: Would run 'cargo update -p mp4-py'")
     else:
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(new_version)
-        print(f"Version updated in {file_path} to {new_version}")
-
-    return new_version
+        subprocess.run(["cargo", "update", "-p", "mp4-py"], check=True)
 
 
-# uv sync を実行し、uv.lock を git に追加
-def run_uv_sync(dry_run: bool) -> None:
-    if dry_run:
-        print("Dry-run: Would run 'uv sync' and add 'uv.lock' to git")
-    else:
-        # uv sync の実行
-        result = subprocess.run(["uv", "sync"], check=True, capture_output=True, text=True)
-        print(result.stdout)
-
-        # uv.lock ファイルを git に追加
-        subprocess.run(["git", "add", "uv.lock"], check=True)
-        print("Added 'uv.lock' to git")
-
-
-# git コミット、タグ、プッシュを実行
 def git_operations(new_version: str, dry_run: bool) -> None:
     if dry_run:
-        print("Dry-run: Would run 'git add VERSION' and 'git add uv.lock'")
-        print(f"Dry-run: Would run 'git commit -m Bump version to {new_version}'")
+        print("Dry-run: Would run 'git add Cargo.toml Cargo.lock'")
+        print(f"Dry-run: Would run 'git commit -m [canary] Bump version to {new_version}'")
         print(f"Dry-run: Would run 'git tag {new_version}'")
-        print("Dry-run: Would run 'git push'")
-        print("Dry-run: Would run 'git push --tags'")
+        print("Dry-run: Would run 'git push && git push --tags'")
     else:
-        subprocess.run(["git", "add", "VERSION"], check=True)
+        subprocess.run(["git", "add", CARGO_TOML, "Cargo.lock"], check=True)
         subprocess.run(
             ["git", "commit", "-m", f"[canary] Bump version to {new_version}"], check=True
         )
@@ -73,28 +68,31 @@ def git_operations(new_version: str, dry_run: bool) -> None:
         subprocess.run(["git", "push", "--tags"], check=True)
 
 
-# メイン処理
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Update VERSION file, run uv sync, and commit changes."
+        description="Bump Cargo.toml version, update Cargo.lock, commit and tag."
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Run in dry-run mode without making actual changes"
+        "--dry-run", action="store_true", help="変更を加えず実行内容だけ表示する"
     )
     args = parser.parse_args()
 
-    version_file_path: str = "VERSION"
+    current = read_version(CARGO_TOML)
+    new_version = bump(current)
+    print(f"Current version: {current}")
+    print(f"New version: {new_version}")
+    confirmation = input("Do you want to update the version? (Y/n): ").strip().lower()
+    if confirmation != "y":
+        print("Version update canceled.")
+        return
 
-    # バージョン更新
-    new_version: Optional[str] = update_version(version_file_path, args.dry_run)
+    if args.dry_run:
+        print(f"Dry-run: Would update {CARGO_TOML} to {new_version}")
+    else:
+        write_version(CARGO_TOML, new_version)
+        print(f"Version updated in {CARGO_TOML} to {new_version}")
 
-    if not new_version:
-        return  # ユーザーが確認をキャンセルした場合、処理を中断
-
-    # uv sync 実行
-    run_uv_sync(args.dry_run)
-
-    # git 操作
+    update_cargo_lock(args.dry_run)
     git_operations(new_version, args.dry_run)
 
 

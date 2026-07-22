@@ -133,7 +133,7 @@ fn extract_bytes_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Ve
 
 // ===== SampleEntry: Vp08 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryVp08 {
     #[pyo3(get)]
@@ -234,7 +234,7 @@ impl Mp4SampleEntryVp08 {
 
 // ===== SampleEntry: Vp09 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryVp09 {
     #[pyo3(get)]
@@ -340,7 +340,7 @@ impl Mp4SampleEntryVp09 {
 
 // ===== SampleEntry: Avc1 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryAvc1 {
     #[pyo3(get)]
@@ -572,7 +572,7 @@ impl HevcCommon {
 // マクロで Hev1/Hvc1 の pyclass を展開する (差分はコンストラクタと to_sample_entry のバリアントのみ)
 macro_rules! hevc_pyclass {
     ($cls:ident, $box_ty:ident, $variant:ident) => {
-        #[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+        #[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
         #[derive(Clone)]
         struct $cls {
             inner: HevcCommon,
@@ -725,7 +725,7 @@ hevc_pyclass!(Mp4SampleEntryHvc1, Hvc1Box, Hvc1);
 
 // ===== SampleEntry: Av01 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryAv01 {
     #[pyo3(get)]
@@ -869,7 +869,7 @@ impl Mp4SampleEntryAv01 {
 
 // ===== SampleEntry: Opus =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryOpus {
     #[pyo3(get)]
@@ -945,7 +945,7 @@ impl Mp4SampleEntryOpus {
 
 // ===== SampleEntry: Mp4a =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryMp4a {
     #[pyo3(get)]
@@ -1060,7 +1060,7 @@ impl Mp4SampleEntryMp4a {
 
 // ===== SampleEntry: Flac =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryFlac {
     #[pyo3(get)]
@@ -1201,7 +1201,7 @@ fn sample_entry_from_core(py: Python<'_>, entry: &SampleEntry) -> PyResult<Optio
 
 // ===== Mp4TrackInfo =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4TrackInfo {
     #[pyo3(get)]
@@ -1244,19 +1244,19 @@ impl Mp4TrackInfo {
 
 // ===== Mp4MuxSample =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", skip_from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4MuxSample {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     track_kind: String,
     // 9 種の SampleEntry のうちいずれか (None なら前と同じ)
     sample_entry: Option<Mp4SampleEntryAny>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     keyframe: bool,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     timescale: u32,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     duration: u32,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     composition_time_offset: Option<i64>,
     data: Py<PyBytes>,
 }
@@ -1303,11 +1303,6 @@ impl Mp4MuxSample {
         self.sample_entry.as_ref().map(|s| s.clone_ref(py))
     }
 
-    #[setter]
-    fn set_sample_entry(&mut self, value: Option<Mp4SampleEntryAny>) {
-        self.sample_entry = value;
-    }
-
     #[getter]
     fn data(&self, py: Python<'_>) -> Py<PyBytes> {
         self.data.clone_ref(py)
@@ -1324,7 +1319,7 @@ impl Mp4MuxSample {
 
 // ===== Mp4DemuxSample (遅延読み込み対応) =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", skip_from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", skip_from_py_object)]
 struct Mp4DemuxSample {
     #[pyo3(get)]
     track: Py<Mp4TrackInfo>,
@@ -1445,10 +1440,10 @@ impl Mp4DemuxSample {
 
 // ===== Mp4FileMuxerOptions =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", from_py_object)]
 #[derive(Clone)]
 struct Mp4FileMuxerOptions {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     reserved_moov_box_size: usize,
 }
 
@@ -1482,7 +1477,7 @@ struct MuxerState {
     closed: bool,
 }
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, skip_from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4FileMuxer {
     state: Mutex<MuxerState>,
     stream: PyObject,
@@ -1641,7 +1636,7 @@ struct DemuxerState {
     ended: bool,
 }
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, skip_from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4FileDemuxer {
     state: Mutex<DemuxerState>,
     input_stream: PyObject,
@@ -1915,7 +1910,7 @@ impl Mp4FileDemuxer {
 // 動作しない (関数形式 `#[pymodule] fn mod_name` は非対応)。ここでは既存の型定義を
 // そのまま参照する形で inline module を構成する。
 #[pymodule(gil_used = false)]
-mod mp4_pyo3_ext {
+mod mp4_ext {
     #[pymodule_export]
     use super::{
         Mp4DemuxSample, Mp4FileDemuxer, Mp4FileMuxer, Mp4FileMuxerOptions, Mp4MuxSample,
