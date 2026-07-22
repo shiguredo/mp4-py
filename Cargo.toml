@@ -1,6 +1,9 @@
 [package]
 name = "mp4-py"
-version = "2026.1.0"
+# Python パッケージのバージョンは pyproject.toml の [project] version が source of truth。
+# publish = false なので crates.io には出ず、src/ / build.rs でも CARGO_PKG_VERSION を参照していないため
+# Cargo が必須にしている本フィールドは 0.0.0 で固定する。
+version = "0.0.0"
 edition = "2024"
 # edition = "2024" が Rust 1.85 以上を必須にしているので、build.rs の
 # `cargo::rustc-env` (二重コロン記法, Cargo 1.77+ 必須) も自動的にカバーされる。
@@ -8,15 +11,18 @@ rust-version = "1.85"
 publish = false
 
 [lib]
+crate-type = ["cdylib"]
 # Python 拡張モジュールとして cdylib を生成する
 name = "mp4_ext"
-crate-type = ["cdylib"]
 
 [dependencies]
+# PyO3 0.29 は Free-Threading (Py_GIL_DISABLED) の Python 3.14+ に対応。
+pyo3 = {
+  version = "0.29",
+  features = ["abi3-py312", "experimental-inspect", "extension-module"]
+}
 # crates.io 公開版の shiguredo_mp4 (Rust クレート) を使う。
 shiguredo_mp4 = "=2026.3.0"
-# PyO3 0.29 は Free-Threading (Py_GIL_DISABLED) の Python 3.14+ に対応。
-pyo3 = { version = "0.29", features = ["extension-module", "abi3-py312", "experimental-inspect"] }
 
 [build-dependencies]
 # shiguredo_mp4 の実際に使われている pin バージョンを Cargo.lock から解決するため。

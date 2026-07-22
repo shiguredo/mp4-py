@@ -1,5 +1,6 @@
 [project]
 name = "mp4-py"
+version = "2026.1.0"
 description = "Python bindings for shiguredo/mp4-rs"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,8 +20,6 @@ classifiers = [
   "Programming Language :: Rust",
 ]
 dependencies = []
-# Cargo.toml の [package] version をそのまま使う (maturin が自動で読み取る)。
-dynamic = ["version"]
 
 [project.urls]
 Discord = "https://discord.gg/shiguredo"

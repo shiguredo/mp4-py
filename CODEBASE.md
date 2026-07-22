@@ -70,11 +70,13 @@
 
 ## リリース
 
-- バージョンは `Cargo.toml` の `[package] version` を source of truth とする
-  - pyproject.toml は `dynamic = ["version"]` で maturin が Cargo.toml から読み取る
+- バージョンは `pyproject.toml` の `[project] version` を source of truth とする
+  - Cargo.toml の `[package] version` は Cargo が必須にしているだけの placeholder で `0.0.0` に固定する
+  - `publish = false` で crates.io には出ず、`src/` / `build.rs` でも `CARGO_PKG_VERSION` は参照しない
 - リリース手順:
-  1. `Cargo.toml` の version を更新
+  1. `pyproject.toml` の version を更新
   2. `CHANGES.md` の `develop` セクションをバージョン節へ移動
   3. コミット + git tag `202X.Y.Z`
   4. tag を push すると `.github/workflows/wheel.yml` が起動し PyPI + GitHub Release に公開する
+- canary リリースは `dev.py` で `pyproject.toml` を `.devN` に bump する
 - CHANGES.md は `shiguredo-changelog` スキルの規約に従うこと
