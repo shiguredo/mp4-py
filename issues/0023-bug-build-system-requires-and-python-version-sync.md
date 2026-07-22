@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-build-system-requires-and-python-version-sync
 - Polished: {YYYY-MM-DD}
@@ -115,3 +115,7 @@ build-backend = "scikit_build_core.build"
    - [UPDATE] .python-version に 3.14t を含める
      - @voluntas
    ```
+
+## 対応結果
+
+`scikit-build-core` および `pyproject.toml` の `build-system.requires` は maturin ベースに置き換えたため議論そのものが消滅した。`.python-version` は現状リポジトリに存在しない。よって closed とする。
