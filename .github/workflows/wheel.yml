@@ -155,8 +155,9 @@ jobs:
           rust-toolchain: stable
       - name: Test wheel (3.14t)
         run: |
-          uv pip install --system wheelhouse/*.whl pytest pytest-timeout
-          NO_UV_SYNC=1 pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
+          uv venv --python 3.14t .venv-ft
+          uv pip install --python .venv-ft/bin/python wheelhouse/*.whl pytest pytest-timeout
+          NO_UV_SYNC=1 .venv-ft/bin/pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
       - uses: actions/upload-artifact@v6
         with:
           name: wheels-${{ matrix.platform.name }}_ft-3.14t
