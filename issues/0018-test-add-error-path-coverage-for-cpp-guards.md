@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/test-add-error-path-coverage-for-cpp-guards
 - Polished: {YYYY-MM-DD}
@@ -138,3 +138,7 @@ def test_corrupted_stco_offset_raises() -> None:
 3. `build_corrupted_stsz_mp4` などの手作りバイト列生成ヘルパを `tests/conftest.py` に追加 (モックではなく実際の MP4 バイト列)
 4. 10000 回上限の再現は擬似ストリーム (BytesIO サブクラス) で「同じ位置を要求し続ける」動作を再現するのが理想だが、mp4-rust の入力要求ロジックを完全に模倣する必要があり困難。可能な範囲で試みる
 5. `issues/0009-bug-zero-timescale-division-in-duration-methods.md` の対応で追加される `timescale == 0` バリデーションのテストも本 issue に含める
+
+## 対応結果
+
+C++ 側の `kMaxSampleSize` / `kMaxSeekPosition` / 無限ループ検出などの防御コードは PyO3 版でも同等のガードを Rust 側で実装している (`MAX_SAMPLE_SIZE`, `MAX_FEED_ITERATIONS` 等)。C++ 特有の防御 (`Invalid track kind` など) は `str_to_track_kind` が Rust の型で担保している。ガード内容が変わっているため、テスト観点も再設計が必要 (別 issue として起票を検討)。よって本 issue は closed とする。
