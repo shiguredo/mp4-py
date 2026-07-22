@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-free-threading-def-rw-unprotected-fields
 - Polished: {YYYY-MM-DD}
@@ -79,3 +79,7 @@ nanobind の `def_rw` 実装は `nb_class.h:703-719` で `def_prop_rw` に単純
 2. スカラー型 (uint8_t / uint16_t / uint32_t / bool 等) は atomic な代入で済むので `nb::lock_self()` は付けない (ノイズを避ける)
 3. `test_free_threading.py` に「同一 sample_entry オブジェクトの複合フィールドを並列に read/write する」テストを追加
 4. 本 issue 対応後は `issues/0006-refactor-sample-entry-converter-unnecessary-copy.md` (別 issue) で `SampleEntryConverter` の不要コピーを削除可能になる
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えたため、nanobind の `def_rw` および `nb::lock_self` の議論が消滅した。PyO3 側では公開フィールドの immutable 化 (frozen pyclass) と、可変な状態を持つ Muxer/Demuxer 側の `std::sync::Mutex` + `MutexExt::lock_py_attached` でスレッド安全性を確保している。よって closed とする。
