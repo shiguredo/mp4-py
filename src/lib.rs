@@ -1,28 +1,22 @@
 //! shiguredo_mp4 の PyO3 バインディング (nanobind 版と全機能パリティを目指す)
 
 use std::num::NonZeroU32;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pyo3::exceptions::{PyRuntimeError, PyStopIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::MutexExt;
-use pyo3::types::{PyBytes, PyString, PyType};
-use pyo3::{Py, PyAny};
-
-// PyO3 0.29 で `pyo3::PyObject` の型 alias が削除されたため、下流で使いやすいように張り直す。
-type PyObject = Py<PyAny>;
+use pyo3::types::{PyBytes, PyString};
 
 use shiguredo_mp4::{
     FixedPointNumber, TrackKind, Uint,
     boxes::{
-        Av01Box, Av1cBox, Avc1Box, AvccBox, AudioSampleEntryFields, DflaBox, DopsBox, EsdsBox,
+        AudioSampleEntryFields, Av01Box, Av1cBox, Avc1Box, AvccBox, DflaBox, DopsBox, EsdsBox,
         FlacBox, FlacMetadataBlock, Hev1Box, Hvc1Box, HvccBox, HvccNalUintArray, Mp4aBox, OpusBox,
         SampleEntry, VisualSampleEntryFields, Vp08Box, Vp09Box, VpccBox,
     },
-    demux::{
-        DemuxError, Input as DemuxInput, Mp4FileDemuxer as CoreDemuxer, RequiredInput,
-    },
+    demux::{DemuxError, Input as DemuxInput, Mp4FileDemuxer as CoreDemuxer, RequiredInput},
     descriptors::{DecoderConfigDescriptor, DecoderSpecificInfo, EsDescriptor, SlConfigDescriptor},
     mux::{
         Mp4FileMuxer as CoreMuxer, Mp4FileMuxerOptions as CoreMuxerOptions,
@@ -51,6 +45,13 @@ fn estimate_maximum_moov_box_size(audio_sample_count: u32, video_sample_count: u
 
 fn map_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(format!("mp4 error: {e}"))
+}
+
+// Mutex が Poisoned のとき、以前の Rust パニックで壊れた状態を Python 側にわかる
+// 形で伝える。以前は `.unwrap()` で Rust パニックさせていたが、これは PyO3 の
+// trampoline で SystemError に変換され原因が分かりにくかった。
+fn poisoned_err(what: &str) -> PyErr {
+    PyRuntimeError::new_err(format!("{what} state poisoned by previous panic"))
 }
 
 fn track_kind_to_str(kind: TrackKind) -> &'static str {
@@ -582,27 +583,27 @@ macro_rules! hevc_pyclass {
         impl $cls {
             #[new]
             #[pyo3(signature = (
-                width,
-                height,
-                general_profile_idc,
-                general_level_idc,
-                nalu_types = None,
-                nalu_data = None,
-                general_profile_space = 0,
-                general_tier_flag = 0,
-                general_profile_compatibility_flags = 0,
-                general_constraint_indicator_flags = 0,
-                chroma_format_idc = 1,
-                bit_depth_luma_minus8 = 0,
-                bit_depth_chroma_minus8 = 0,
-                min_spatial_segmentation_idc = 0,
-                parallelism_type = 0,
-                avg_frame_rate = 0,
-                constant_frame_rate = 0,
-                num_temporal_layers = 0,
-                temporal_id_nested = 0,
-                length_size_minus_one = 3,
-            ))]
+                        width,
+                        height,
+                        general_profile_idc,
+                        general_level_idc,
+                        nalu_types = None,
+                        nalu_data = None,
+                        general_profile_space = 0,
+                        general_tier_flag = 0,
+                        general_profile_compatibility_flags = 0,
+                        general_constraint_indicator_flags = 0,
+                        chroma_format_idc = 1,
+                        bit_depth_luma_minus8 = 0,
+                        bit_depth_chroma_minus8 = 0,
+                        min_spatial_segmentation_idc = 0,
+                        parallelism_type = 0,
+                        avg_frame_rate = 0,
+                        constant_frame_rate = 0,
+                        num_temporal_layers = 0,
+                        temporal_id_nested = 0,
+                        length_size_minus_one = 3,
+                    ))]
             #[allow(clippy::too_many_arguments)]
             fn new(
                 py: Python<'_>,
@@ -816,7 +817,6 @@ impl Mp4SampleEntryAv01 {
     fn config_obus(&self, py: Python<'_>) -> Py<PyBytes> {
         PyBytes::new(py, &self.config_obus).unbind()
     }
-
 }
 
 impl Mp4SampleEntryAv01 {
@@ -856,7 +856,10 @@ impl Mp4SampleEntryAv01 {
             chroma_subsampling_x: b.av1c_box.chroma_subsampling_x.get(),
             chroma_subsampling_y: b.av1c_box.chroma_subsampling_y.get(),
             chroma_sample_position: b.av1c_box.chroma_sample_position.get(),
-            initial_presentation_delay_present: b.av1c_box.initial_presentation_delay_minus_one.is_some(),
+            initial_presentation_delay_present: b
+                .av1c_box
+                .initial_presentation_delay_minus_one
+                .is_some(),
             initial_presentation_delay_minus_one: b
                 .av1c_box
                 .initial_presentation_delay_minus_one
@@ -1001,7 +1004,6 @@ impl Mp4SampleEntryMp4a {
     fn dec_specific_info(&self, py: Python<'_>) -> Py<PyBytes> {
         PyBytes::new(py, &self.dec_specific_info).unbind()
     }
-
 }
 
 impl Mp4SampleEntryMp4a {
@@ -1100,7 +1102,6 @@ impl Mp4SampleEntryFlac {
     fn streaminfo_data(&self, py: Python<'_>) -> Py<PyBytes> {
         PyBytes::new(py, &self.streaminfo_data).unbind()
     }
-
 }
 
 impl Mp4SampleEntryFlac {
@@ -1182,17 +1183,38 @@ impl Mp4SampleEntryAny {
     }
 }
 
-fn sample_entry_from_core(py: Python<'_>, entry: &SampleEntry) -> PyResult<Option<Mp4SampleEntryAny>> {
+fn sample_entry_from_core(
+    py: Python<'_>,
+    entry: &SampleEntry,
+) -> PyResult<Option<Mp4SampleEntryAny>> {
     let out = match entry {
-        SampleEntry::Vp08(b) => Mp4SampleEntryAny::Vp08(Py::new(py, Mp4SampleEntryVp08::from_box(b))?),
-        SampleEntry::Vp09(b) => Mp4SampleEntryAny::Vp09(Py::new(py, Mp4SampleEntryVp09::from_box(b))?),
-        SampleEntry::Avc1(b) => Mp4SampleEntryAny::Avc1(Py::new(py, Mp4SampleEntryAvc1::from_box(b))?),
-        SampleEntry::Hev1(b) => Mp4SampleEntryAny::Hev1(Py::new(py, Mp4SampleEntryHev1::from_box(b))?),
-        SampleEntry::Hvc1(b) => Mp4SampleEntryAny::Hvc1(Py::new(py, Mp4SampleEntryHvc1::from_box(b))?),
-        SampleEntry::Av01(b) => Mp4SampleEntryAny::Av01(Py::new(py, Mp4SampleEntryAv01::from_box(b))?),
-        SampleEntry::Opus(b) => Mp4SampleEntryAny::Opus(Py::new(py, Mp4SampleEntryOpus::from_box(b))?),
-        SampleEntry::Mp4a(b) => Mp4SampleEntryAny::Mp4a(Py::new(py, Mp4SampleEntryMp4a::from_box(b))?),
-        SampleEntry::Flac(b) => Mp4SampleEntryAny::Flac(Py::new(py, Mp4SampleEntryFlac::from_box(b))?),
+        SampleEntry::Vp08(b) => {
+            Mp4SampleEntryAny::Vp08(Py::new(py, Mp4SampleEntryVp08::from_box(b))?)
+        }
+        SampleEntry::Vp09(b) => {
+            Mp4SampleEntryAny::Vp09(Py::new(py, Mp4SampleEntryVp09::from_box(b))?)
+        }
+        SampleEntry::Avc1(b) => {
+            Mp4SampleEntryAny::Avc1(Py::new(py, Mp4SampleEntryAvc1::from_box(b))?)
+        }
+        SampleEntry::Hev1(b) => {
+            Mp4SampleEntryAny::Hev1(Py::new(py, Mp4SampleEntryHev1::from_box(b))?)
+        }
+        SampleEntry::Hvc1(b) => {
+            Mp4SampleEntryAny::Hvc1(Py::new(py, Mp4SampleEntryHvc1::from_box(b))?)
+        }
+        SampleEntry::Av01(b) => {
+            Mp4SampleEntryAny::Av01(Py::new(py, Mp4SampleEntryAv01::from_box(b))?)
+        }
+        SampleEntry::Opus(b) => {
+            Mp4SampleEntryAny::Opus(Py::new(py, Mp4SampleEntryOpus::from_box(b))?)
+        }
+        SampleEntry::Mp4a(b) => {
+            Mp4SampleEntryAny::Mp4a(Py::new(py, Mp4SampleEntryMp4a::from_box(b))?)
+        }
+        SampleEntry::Flac(b) => {
+            Mp4SampleEntryAny::Flac(Py::new(py, Mp4SampleEntryFlac::from_box(b))?)
+        }
         SampleEntry::Unknown(_) => return Ok(None),
     };
     let _ = py;
@@ -1336,7 +1358,12 @@ struct Mp4DemuxSample {
     data_offset: u64,
     #[pyo3(get)]
     data_size: u64,
-    input_stream: PyObject,
+    input_stream: Py<PyAny>,
+    // Demuxer と共有する I/O シリアライズ用ロック。
+    // 同一 input_stream に対して複数の Mp4DemuxSample が同時に seek + read を叩くと
+    // ファイル位置が競合してデータが混ざるため、Free-Threading 環境でも安全に読める
+    // ようにサンプル間でロックを共有する。
+    stream_lock: Arc<Mutex<()>>,
     // 一度読み込んだデータをキャッシュする (Free-Threading 対応で Mutex 化)
     data_cache: Mutex<Option<Py<PyBytes>>>,
 }
@@ -1364,7 +1391,7 @@ impl Mp4DemuxSample {
         duration: u32,
         data_offset: u64,
         data_size: u64,
-        input_stream: PyObject,
+        input_stream: Py<PyAny>,
         composition_time_offset: Option<i64>,
     ) -> Self {
         Self {
@@ -1377,6 +1404,10 @@ impl Mp4DemuxSample {
             data_offset,
             data_size,
             input_stream,
+            // Python から直接コンストラクタが呼ばれた場合、この Sample 単体で
+            // ロックが完結する (Demuxer から作られる通常のフローでは Demuxer と
+            // 共有した Arc を渡す)
+            stream_lock: Arc::new(Mutex::new(())),
             data_cache: Mutex::new(None),
         }
     }
@@ -1388,8 +1419,12 @@ impl Mp4DemuxSample {
 
     #[getter]
     fn data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        // ファストパス: すでにキャッシュ済みならロックを離す前にコピーだけ返す。
         {
-            let cache = self.data_cache.lock_py_attached(py).unwrap();
+            let cache = self
+                .data_cache
+                .lock_py_attached(py)
+                .map_err(|_| poisoned_err("sample data cache"))?;
             if let Some(ref b) = *cache {
                 return Ok(b.clone_ref(py));
             }
@@ -1401,19 +1436,44 @@ impl Mp4DemuxSample {
                 self.data_size, MAX_SAMPLE_SIZE
             )));
         }
-        self.input_stream.call_method1(py, "seek", (self.data_offset,))?;
-        let read: Py<PyBytes> = self
-            .input_stream
-            .call_method1(py, "read", (self.data_size,))?
-            .extract(py)?;
-        if read.bind(py).as_bytes().len() as u64 != self.data_size {
-            return Err(map_err(format!(
-                "Failed to read sample data: expected {} bytes, got {}",
-                self.data_size,
-                read.bind(py).as_bytes().len()
-            )));
-        }
-        *self.data_cache.lock_py_attached(py).unwrap() = Some(read.clone_ref(py));
+        // I/O は Demuxer と共有する stream_lock で直列化する。
+        // 同一 stream を複数のサンプル (あるいは iteration の feed_required_input)
+        // が並行して叩くと seek/read が競合するため、必ずロック内で完結させる。
+        let read: Py<PyBytes> = {
+            let _guard = self
+                .stream_lock
+                .lock_py_attached(py)
+                .map_err(|_| poisoned_err("demuxer stream lock"))?;
+            // ロック取得直後にもう一度キャッシュを見る。前段のファストパスと
+            // ロック取得の間に別スレッドが埋めていた場合、I/O を省ける。
+            {
+                let cache = self
+                    .data_cache
+                    .lock_py_attached(py)
+                    .map_err(|_| poisoned_err("sample data cache"))?;
+                if let Some(ref b) = *cache {
+                    return Ok(b.clone_ref(py));
+                }
+            }
+            self.input_stream
+                .call_method1(py, "seek", (self.data_offset,))?;
+            let bytes: Py<PyBytes> = self
+                .input_stream
+                .call_method1(py, "read", (self.data_size,))?
+                .extract(py)?;
+            if bytes.bind(py).as_bytes().len() as u64 != self.data_size {
+                return Err(map_err(format!(
+                    "Failed to read sample data: expected {} bytes, got {}",
+                    self.data_size,
+                    bytes.bind(py).as_bytes().len()
+                )));
+            }
+            bytes
+        };
+        *self
+            .data_cache
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("sample data cache"))? = Some(read.clone_ref(py));
         Ok(read)
     }
 
@@ -1457,12 +1517,11 @@ impl Mp4FileMuxerOptions {
         }
     }
 
-    #[classmethod]
-    fn estimate_maximum_moov_box_size(
-        _cls: &Bound<'_, PyType>,
-        audio_sample_count: u32,
-        video_sample_count: u32,
-    ) -> usize {
+    // cls を使わないので #[staticmethod] にする。
+    // Python 側から Mp4FileMuxerOptions.estimate_maximum_moov_box_size(a, v) と
+    // 呼べる API は #[classmethod] と変わらない。
+    #[staticmethod]
+    fn estimate_maximum_moov_box_size(audio_sample_count: u32, video_sample_count: u32) -> usize {
         core_estimate_moov(&[audio_sample_count as usize, video_sample_count as usize])
     }
 }
@@ -1480,7 +1539,7 @@ struct MuxerState {
 #[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4FileMuxer {
     state: Mutex<MuxerState>,
-    stream: PyObject,
+    stream: Py<PyAny>,
     should_close_stream: bool,
 }
 
@@ -1515,7 +1574,7 @@ impl Mp4FileMuxer {
     #[pyo3(signature = (destination, options = None))]
     fn new(
         py: Python<'_>,
-        destination: PyObject,
+        destination: Py<PyAny>,
         options: Option<Mp4FileMuxerOptions>,
     ) -> PyResult<Self> {
         let (stream, should_close) = {
@@ -1552,7 +1611,10 @@ impl Mp4FileMuxer {
     }
 
     fn append_sample(&self, py: Python<'_>, sample: &Mp4MuxSample) -> PyResult<()> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("muxer"))?;
         if state.closed {
             return Err(PyRuntimeError::new_err("muxer is closed"));
         }
@@ -1589,12 +1651,18 @@ impl Mp4FileMuxer {
     }
 
     fn finalize(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("muxer"))?;
         self.finalize_locked(py, &mut state)
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("muxer"))?;
         if state.closed {
             return Ok(());
         }
@@ -1612,13 +1680,17 @@ impl Mp4FileMuxer {
         slf
     }
 
-    #[pyo3(signature = (_exc_type, _exc_val, _exc_tb))]
+    // __exit__ の引数は Python 側では位置引数として (exc_type, exc_val, exc_tb) が
+    // 期待されるため、キーワード呼び出しに配慮して leading underscore を外す。
+    // Rust 側で参照を破棄したいだけなので `&Bound<'_, PyAny>` にして refcount 操作を避ける。
+    #[pyo3(signature = (exc_type, exc_val, exc_tb))]
+    #[allow(unused_variables)]
     fn __exit__(
         &self,
         py: Python<'_>,
-        _exc_type: Bound<'_, PyAny>,
-        _exc_val: Bound<'_, PyAny>,
-        _exc_tb: Bound<'_, PyAny>,
+        exc_type: &Bound<'_, PyAny>,
+        exc_val: &Bound<'_, PyAny>,
+        exc_tb: &Bound<'_, PyAny>,
     ) -> PyResult<bool> {
         self.close(py)?;
         Ok(false)
@@ -1639,13 +1711,19 @@ struct DemuxerState {
 #[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4FileDemuxer {
     state: Mutex<DemuxerState>,
-    input_stream: PyObject,
+    input_stream: Py<PyAny>,
+    // input_stream への seek + read を Demuxer 本体と各 Mp4DemuxSample の間で
+    // 直列化するためのロック。Free-Threading 環境で複数スレッドが sample.data を
+    // 触ったときにファイル位置が競合しないようにする。
+    // Arc にしているのは Mp4DemuxSample にも clone_ref して同じロックを共有させるため。
+    stream_lock: Arc<Mutex<()>>,
     should_close_stream: bool,
 }
 
 impl Mp4FileDemuxer {
     // 必要なデータをストリームから供給する。真の EOF に達したら true を返す。
-    // lock 済みの state を受け取る (lock 中に IO する)
+    // lock 済みの state を受け取る (lock 中に IO する)。
+    // stream_lock は内部で個別に取得し、sample.data と直列化する。
     fn feed_required_input(&self, py: Python<'_>, state: &mut DemuxerState) -> PyResult<bool> {
         let mut iterations = 0;
         loop {
@@ -1670,13 +1748,21 @@ impl Mp4FileDemuxer {
                     )));
                 }
             }
-            self.input_stream.call_method1(py, "seek", (position,))?;
-            let read: Py<PyBytes> = match size {
-                Some(n) => self
-                    .input_stream
-                    .call_method1(py, "read", (n,))?
-                    .extract(py)?,
-                None => self.input_stream.call_method0(py, "read")?.extract(py)?,
+            // seek + read の間に別スレッドが入って位置を移動させないよう、
+            // 1 回の読み込みは必ず stream_lock のロック内で完結させる。
+            let read: Py<PyBytes> = {
+                let _guard = self
+                    .stream_lock
+                    .lock_py_attached(py)
+                    .map_err(|_| poisoned_err("demuxer stream lock"))?;
+                self.input_stream.call_method1(py, "seek", (position,))?;
+                match size {
+                    Some(n) => self
+                        .input_stream
+                        .call_method1(py, "read", (n,))?
+                        .extract(py)?,
+                    None => self.input_stream.call_method0(py, "read")?.extract(py)?,
+                }
             };
             let data = read.bind(py).as_bytes();
             state.core.handle_input(DemuxInput { position, data });
@@ -1730,7 +1816,7 @@ impl Mp4FileDemuxer {
 #[pymethods]
 impl Mp4FileDemuxer {
     #[new]
-    fn new(py: Python<'_>, source: PyObject) -> PyResult<Self> {
+    fn new(py: Python<'_>, source: Py<PyAny>) -> PyResult<Self> {
         let (stream, should_close) = {
             let src = source.bind(py);
             if src.cast::<PyBytes>().is_ok() {
@@ -1753,13 +1839,17 @@ impl Mp4FileDemuxer {
                 ended: false,
             }),
             input_stream: stream,
+            stream_lock: Arc::new(Mutex::new(())),
             should_close_stream: should_close,
         })
     }
 
     #[getter]
     fn tracks(&self, py: Python<'_>) -> PyResult<Vec<Py<Mp4TrackInfo>>> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("demuxer"))?;
         if state.closed {
             return Err(PyRuntimeError::new_err("demuxer is closed"));
         }
@@ -1778,7 +1868,10 @@ impl Mp4FileDemuxer {
     }
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Py<Mp4DemuxSample>> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("demuxer"))?;
         if state.closed {
             return Err(PyStopIteration::new_err(()));
         }
@@ -1868,6 +1961,9 @@ impl Mp4FileDemuxer {
                     data_offset,
                     data_size,
                     input_stream: self.input_stream.clone_ref(py),
+                    // Demuxer と同じロックを共有し、sample.data と feed_required_input の
+                    // 間で input_stream を直列化する。
+                    stream_lock: Arc::clone(&self.stream_lock),
                     data_cache: Mutex::new(None),
                 };
                 return Py::new(py, out);
@@ -1876,7 +1972,10 @@ impl Mp4FileDemuxer {
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock_py_attached(py).unwrap();
+        let mut state = self
+            .state
+            .lock_py_attached(py)
+            .map_err(|_| poisoned_err("demuxer"))?;
         if state.closed {
             return Ok(());
         }
@@ -1891,13 +1990,16 @@ impl Mp4FileDemuxer {
         slf
     }
 
-    #[pyo3(signature = (_exc_type, _exc_val, _exc_tb))]
+    // Muxer 側と揃えて、キーワード呼び出しに配慮して leading underscore を外し、
+    // Bound を参照で受けて余分な refcount 操作を避ける。
+    #[pyo3(signature = (exc_type, exc_val, exc_tb))]
+    #[allow(unused_variables)]
     fn __exit__(
         &self,
         py: Python<'_>,
-        _exc_type: Bound<'_, PyAny>,
-        _exc_val: Bound<'_, PyAny>,
-        _exc_tb: Bound<'_, PyAny>,
+        exc_type: &Bound<'_, PyAny>,
+        exc_val: &Bound<'_, PyAny>,
+        exc_tb: &Bound<'_, PyAny>,
     ) -> PyResult<bool> {
         self.close(py)?;
         Ok(false)
@@ -1909,7 +2011,8 @@ impl Mp4FileDemuxer {
 // [NOTE] PyO3 の experimental-inspect による .pyi 生成は inline module 形式でしか
 // 動作しない (関数形式 `#[pymodule] fn mod_name` は非対応)。ここでは既存の型定義を
 // そのまま参照する形で inline module を構成する。
-#[pymodule(gil_used = false)]
+// PyO3 0.28 以降は `gil_used = false` が既定なので明示指定は不要。
+#[pymodule]
 mod mp4_ext {
     #[pymodule_export]
     use super::{

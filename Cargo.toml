@@ -2,6 +2,9 @@
 name = "mp4-py"
 version = "2026.1.0"
 edition = "2024"
+# edition = "2024" が Rust 1.85 以上を必須にしているので、build.rs の
+# `cargo::rustc-env` (二重コロン記法, Cargo 1.77+ 必須) も自動的にカバーされる。
+rust-version = "1.85"
 publish = false
 
 [lib]
