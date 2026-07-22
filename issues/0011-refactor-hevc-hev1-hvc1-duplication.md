@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-hevc-hev1-hvc1-duplication
 - Polished: {YYYY-MM-DD}
@@ -136,3 +136,7 @@ register_hevc_binding<PyMp4SampleEntryHvc1>(m, "Mp4SampleEntryHvc1", "...");
 7. `SampleEntryConverter::convert()` (`src/mp4_ext.cpp:1097-1117`) の isinstance ラダーは変更不要 (別クラスとして扱われるため)
 8. 全 PBT を実行し、Hev1/Hvc1 の roundtrip が壊れていないことを確認
 9. 本 issue 対応は `issues/0012-refactor-split-mp4-ext-and-sample-entry-scaffolding.md` (ファイル分割) の一部として実施してもよい
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えた際、Hev1 / Hvc1 の共通コンポーネント (HevcCommon 構造体 + hevc_pyclass! マクロ) で重複を除去した。src/lib.rs の hevc_pyclass 定義参照。よって closed とする。
