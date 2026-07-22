@@ -29,6 +29,10 @@ jobs:
   # ==========================================================================
   # abi3 wheel: Python 3.12+ GIL 有効ビルドで 1 wheel が 3.12/3.13/3.14 全てで使える
   # ==========================================================================
+  # macos-15 と macos-26 は同一 target (aarch64-apple-darwin) のため wheel ファイル名も
+  # 同一になる。同名 wheel を複数リリースすると PyPI / GitHub Release で衝突するので、
+  # リリース用 artifact は古い SDK でビルドされる macos-15 のみとし、macos-26 は
+  # ビルド + テスト専用 (upload: false) とする。
   build_abi3_macos:
     strategy:
       fail-fast: false
@@ -37,9 +41,11 @@ jobs:
           - name: macos-26_arm64
             runs_on: macos-26
             target: aarch64-apple-darwin
+            upload: false
           - name: macos-15_arm64
             runs_on: macos-15
             target: aarch64-apple-darwin
+            upload: true
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
     steps:
@@ -61,7 +67,8 @@ jobs:
             uv pip install --python ".venv-$py/bin/python" wheelhouse/*.whl pytest pytest-timeout hypothesis
             NO_UV_SYNC=1 ".venv-$py/bin/pytest" tests/ --timeout=30 -q
           done
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - if: matrix.platform.upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-${{ matrix.platform.name }}_abi3
           path: wheelhouse/*.whl
@@ -130,6 +137,7 @@ jobs:
   # Free-Threading wheel: Python 3.14t 専用 (PyO3 0.29 は 3.13t 非対応)
   # abi3 が使えないため Python バージョン毎のビルドが必要
   # ==========================================================================
+  # abi3 と同様、リリース用 artifact は macos-15 のみとし macos-26 はテスト専用とする。
   build_ft_macos:
     strategy:
       fail-fast: false
@@ -138,9 +146,11 @@ jobs:
           - name: macos-26_arm64
             runs_on: macos-26
             target: aarch64-apple-darwin
+            upload: false
           - name: macos-15_arm64
             runs_on: macos-15
             target: aarch64-apple-darwin
+            upload: true
     runs-on: ${{ matrix.platform.runs_on }}
     timeout-minutes: 15
     steps:
@@ -162,7 +172,8 @@ jobs:
           uv venv --python 3.14t .venv-ft
           uv pip install --python .venv-ft/bin/python wheelhouse/*.whl pytest pytest-timeout
           NO_UV_SYNC=1 .venv-ft/bin/pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - if: matrix.platform.upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-${{ matrix.platform.name }}_ft-3.14t
           path: wheelhouse/*.whl
