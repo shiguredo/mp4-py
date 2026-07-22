@@ -2,7 +2,7 @@
 
 - Priority: Low
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-remove-dead-enter-methods
 - Polished: {YYYY-MM-DD}
@@ -82,3 +82,7 @@ PyMp4FileMuxer& enter() { return *this; }
 2. `src/mp4_ext.cpp:1431` を削除
 3. `NB_MODULE` 内の `.def("__enter__", ...)` lambda はそのまま
 4. `make develop && NO_UV_SYNC=1 uv run pytest tests/prop_context_manager.py` で context manager テストが通ることを確認
+
+## 対応結果
+
+`PyMp4FileDemuxer::enter` / `PyMp4FileMuxer::enter` は C++ 実装内のデッドコードであり、nanobind から PyO3 への置き換えで消滅した。PyO3 版の `__enter__` は Muxer / Demuxer の pyclass 上に単一の `fn __enter__(slf: Py<Self>) -> Py<Self>` として定義されており、重複はない。よって closed とする。
