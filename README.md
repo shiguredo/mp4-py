@@ -164,9 +164,8 @@ uv pip install pytest pytest-timeout hypothesis
 uv run pytest tests/ --timeout=30
 ```
 
-Rust 側は `Cargo.toml` の `shiguredo_mp4 = { path = "../mp4-rs" }` で
-`shiguredo/mp4-rs` を path 依存している。ローカル開発時は当該リポジトリの
-チェックアウトが必要。リリース時は git 依存 + tag 固定に切り替える。
+Rust 側は crates.io の [`shiguredo_mp4`](https://crates.io/crates/shiguredo_mp4)
+を通常の cargo 依存として参照している (`Cargo.toml` を参照)。
 
 ## mp4-rust ライセンス
 

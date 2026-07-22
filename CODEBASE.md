@@ -4,8 +4,7 @@
 
 - `cargo fmt` でフォーマットすること
 - `cargo clippy` で静的解析すること
-- shiguredo/mp4-rs は `Cargo.toml` の path 依存で参照している
-  - ローカル開発では `../mp4-rs` にチェックアウトが必要
+- shiguredo/mp4-rs (`shiguredo_mp4` クレート) は crates.io 版を通常の cargo 依存として参照する
 - pyo3 の feature は `extension-module`, `abi3-py312`, `experimental-inspect` を有効化する
 - `abi3-py312` により Python 3.12 以降の GIL 有効ビルドは 1 wheel で共有する
 - Free-Threading (3.14t) は abi3 対象外なのでバージョン固有 wheel を別ビルドする
