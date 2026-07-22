@@ -1,10 +1,14 @@
 name: wheel
 
 # maturin + PyO3 ベースの wheel ビルドと公開。
+# develop と feature/** への push で自動テストする。
 # タグ 202* が push されたら PyPI と GitHub Release に公開する。
 on:
   workflow_dispatch:
   push:
+    branches:
+      - develop
+      - "feature/**"
     paths:
       - "src/**"
       - "python/**"
