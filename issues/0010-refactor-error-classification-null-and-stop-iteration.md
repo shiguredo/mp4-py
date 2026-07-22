@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-error-classification-null-and-stop-iteration
 - Polished: {YYYY-MM-DD}
@@ -90,3 +90,7 @@ switch (error) {
 2. `src/mp4_ext.cpp:1522-1541` の Muxer 側も `MP4_ERROR_NULL_POINTER` を `Mp4Exception` に変更 (`std::invalid_argument` → `Mp4Exception`)
 3. 既存の `next()` 側 868-870 行の `NO_MORE_SAMPLES` 先処理は残す
 4. 本 issue は `issues/0006-add-mp4-exception-python-registration.md` の対応後に実施することを推奨 (Mp4Exception が Python 側で捕捉可能になっているとよい)
+
+## 対応結果
+
+`MP4_ERROR_NULL_POINTER` / `MP4_ERROR_NO_MORE_SAMPLES` はいずれも mp4-rust の C API 固有のエラーコードであり、PyO3 バインディングでは C API を経由しないため該当エラーの分類問題そのものが消滅した。PyO3 版では `next_sample()` の `Ok(None)` を明示的に `PyStopIteration` に変換しており、汎用 error → StopIteration マッピングは存在しない。よって closed とする。
