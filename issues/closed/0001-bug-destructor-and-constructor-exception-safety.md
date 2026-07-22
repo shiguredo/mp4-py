@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-nanobind-lifecycle-exception-safety
 - Polished: {YYYY-MM-DD}
@@ -133,3 +133,7 @@ class PyMp4FileMuxer {
 5. デストラクタを `noexcept` として明示し、内部で `try { close(); } catch (...) {}` パターンを採用
 6. デストラクタ内 catch では最低限デバッグ性を担保するため、可能であれば nanobind の `nb::gil_scoped_acquire` (Python ランタイムへのアタッチ) 経由で `PyErr_WriteUnraisable` を呼び、致命ではないが Python 側の warning フックに情報を残す
 7. `test_free_threading.py` 相当の並行テストで、GC 起因の `__del__` が競合ケースでクラッシュしないことを確認するテストを追加
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えたため、C++ のデストラクタ / コンストラクタでの例外安全性の議論そのものが消滅した。PyO3 では pyclass の `Drop` が Rust の RAII で自動処理され、コンストラクタ途中失敗時のリソース解放も Rust の所有権システムで保証されている。よって closed とする。

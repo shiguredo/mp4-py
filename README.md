@@ -24,19 +24,17 @@ Please read <https://github.com/shiguredo/oss/blob/master/README.en.md> before u
 
 - macOS 26 arm64
 - macOS 15 arm64
-- Ubuntu 24.04 x86_64
-- Ubuntu 24.04 arm64
-- Ubuntu 22.04 x86_64
-- Ubuntu 22.04 arm64
+- Ubuntu 24.04 x86_64 (manylinux2014 wheel は glibc 2.17+ 対応)
+- Ubuntu 24.04 arm64 (manylinux2014 wheel は glibc 2.17+ 対応)
 - Windows Server 2025 x86_64
 - Windows 11 x86_64
 
 ## 対応 Python
 
-- 3.14
-- 3.14t
-- 3.13
-- 3.12
+- 3.14 (abi3 wheel: 3.12/3.13/3.14 共通)
+- 3.14t (Free-Threading, 専用 wheel)
+- 3.13 (abi3 wheel)
+- 3.12 (abi3 wheel)
 
 ## インストール
 
@@ -149,11 +147,25 @@ uv run python examples/demux.py input.mp4
 uv run python examples/remux.py input.mp4 output.mp4
 ```
 
-## ビルド
+## 開発ビルド
 
 ```bash
-uv build --wheel
+# maturin をインストール
+uv pip install maturin
+
+# 開発ビルド (editable install)
+maturin develop --release
+
+# wheel を生成
+maturin build --release --out wheelhouse --generate-stubs
+
+# テスト
+uv pip install pytest pytest-timeout hypothesis
+uv run pytest tests/ --timeout=30
 ```
+
+Rust 側は crates.io の [`shiguredo_mp4`](https://crates.io/crates/shiguredo_mp4)
+を通常の cargo 依存として参照している (`Cargo.toml` を参照)。
 
 ## mp4-rust ライセンス
 
@@ -181,8 +193,8 @@ limitations under the License.
 Apache License 2.0
 
 ```text
-Copyright 2025-2026, Takeru Ohta (Original Author)
-Copyright 2025-2026, Shiguredo Inc.
+Copyright 2025 Takeru Ohta (Original Author)
+Copyright 2025 Shiguredo Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

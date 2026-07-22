@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-integer-truncation-in-mux-demux-boundaries
 - Polished: {YYYY-MM-DD}
@@ -99,3 +99,7 @@ if (required_size > 0 && static_cast<int32_t>(data_len) < required_size) {  // �
    }
    ```
 3. 単体テストを `tests/test_mp4.py` に追加。境界値 (UINT32_MAX 前後) を扱えるサイズで再現し、それ以上のサイズは擬似ストリーム経由で `Mp4Exception` を投げることを確認する
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えた際、サンプルデータサイズは Rust の `usize` (64bit 環境で u64) で統一され、`u32` / `i32` への無検査キャストが消滅した。src/lib.rs の `data_size: sample.data_size as u64`, `data_size: data_len` 参照。よって closed とする。

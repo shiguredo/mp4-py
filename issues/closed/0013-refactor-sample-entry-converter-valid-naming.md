@@ -2,7 +2,7 @@
 
 - Priority: Low
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-sample-entry-converter-valid-naming
 - Polished: {YYYY-MM-DD}
@@ -98,3 +98,7 @@ raw_sample.sample_entry = converter.valid ? &converter.raw_entry : nullptr;
 3. `src/mp4_ext.cpp:1478` の `converter.valid` を `converter.has_entry` に置き換え
 4. `convert()` の docstring で「入力が None ではないケースを検出するフラグ」と説明
 5. `issues/0012-refactor-split-mp4-ext-and-sample-entry-scaffolding.md` の対応と同時実施を検討
+
+## 対応結果
+
+`SampleEntryConverter` は C++ 実装内のクラスであり、nanobind から PyO3 への置き換えで消滅した。PyO3 版では `Mp4SampleEntryAny` enum の `FromPyObject` derive によりディスパッチが型システムで表現されるため、命名詐欺のような余地がない。よって closed とする。

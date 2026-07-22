@@ -2,7 +2,7 @@
 
 - Priority: Low
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-data-size-type-consistency-with-c-api
 - Polished: {YYYY-MM-DD}
@@ -80,3 +80,7 @@ static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
 
 1. `src/mp4_ext.cpp:698` のフィールド定義直後に `static_assert(sizeof(uintptr_t) == sizeof(uint64_t), ...)` を追加
 2. コメントで「64bit プラットフォームのみサポート」と明記
+
+## 対応結果
+
+C API 型 (`uintptr_t` など) との整合性の議論は、バインディングが Rust クレート `shiguredo_mp4` 直接呼び出しに置き換わったことで解消した。PyO3 版では `data_size: u64` を使用しており、mp4-rs の型定義とネイティブに整合する。よって closed とする。

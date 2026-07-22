@@ -11,8 +11,20 @@
 
 ## develop
 
+- [CHANGE] バインディング実装を nanobind から PyO3 に置き換える
+  - shiguredo/mp4-rs の C API ではなく Rust クレート `shiguredo_mp4` を直接バインドする
+  - ビルドバックエンドを scikit-build-core + CMake から maturin + Cargo に変更する
+  - Free-Threading (Python 3.14t) は PyO3 0.29 制約により 3.14+ のみ対応する
+  - Python 3.13t は非対応となる
+  - @voluntas
 - [CHANGE] `Mp4FileMuxerOptions.reserved_moov_box_size` を `uint32` で受け取るようにする
   - mp4-rust 2026.2.0 の C API 型変更 (`u64` → `u32`) に追従する
+  - @voluntas
+- [ADD] abi3 wheel (Python 3.12 以降共通) を追加する
+  - 1 wheel で 3.12 / 3.13 / 3.14 の GIL 有効ビルドすべてに対応する
+  - @voluntas
+- [ADD] `.pyi` 型スタブを wheel に自動同梱する
+  - `maturin build --generate-stubs` により pyo3-introspection 経由で自動生成する
   - @voluntas
 - [ADD] `Mp4DemuxSample` に `composition_time_offset` プロパティを追加する
   - `ctts` / `trun` 由来のコンポジション時間オフセットを `int | None` で参照できる
@@ -22,20 +34,14 @@
   - @voluntas
 - [UPDATE] mp4-rust を 2026.3.0 に上げる
   - @voluntas
-- [UPDATE] nanobind を 2.13.0 以上に上げる
-  - @voluntas
-- [UPDATE] scikit-build-core を 0.12.2 以上に上げる
-  - @voluntas
 
 ### misc
 
-- [UPDATE] hypothesis を 6.155.6 に上げる
+- [UPDATE] hypothesis を 6.158.1 に上げる
   - @voluntas
 - [UPDATE] pytest を 9.1.1 に上げる
   - @voluntas
-- [UPDATE] ruff を 0.15.18 に上げる
-  - @voluntas
-- [UPDATE] ty を 0.0.51 に上げる
+- [UPDATE] `build-system.requires` の maturin バージョン下限を `1.14` に引き上げる
   - @voluntas
 
 ## 2026.1.0

@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/refactor-split-mp4-ext-and-sample-entry-scaffolding
 - Polished: {YYYY-MM-DD}
@@ -120,3 +120,7 @@ target_include_directories(mp4_ext PRIVATE
 6. `SampleEntryConverter` は `dispatch.hpp` に集約
 7. すべてのステップで `make develop && NO_UV_SYNC=1 uv run pytest` を実行し回帰がないことを確認
 8. CMakeLists.txt 側で追加ヘッダの include path を確認
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えた際、src/lib.rs の 1 ファイル構成となり、マクロと Rust の型システムで各サンプルエントリーの重複記述が排除された。C++ 版の三重〜四重構造 (struct / from_raw / convert / def_rw) が Rust では struct + to_sample_entry + from_box + `#[pyo3(get)]` のみに集約されている。よって closed とする。

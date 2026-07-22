@@ -1,31 +1,26 @@
-"""Python bindings for mp4-rust"""
+"""Python bindings for shiguredo/mp4-rs (PyO3)"""
 
 from importlib.metadata import version
 from typing import Literal, Union
 
 from .mp4_ext import (
-    # ユーティリティ関数
-    library_version,
-    estimate_maximum_moov_box_size,
-    # サンプルエントリークラス
-    Mp4SampleEntryAvc1,
-    Mp4SampleEntryHev1,
-    Mp4SampleEntryHvc1,
-    Mp4SampleEntryVp08,
-    Mp4SampleEntryVp09,
-    Mp4SampleEntryAv01,
-    Mp4SampleEntryOpus,
-    Mp4SampleEntryMp4a,
-    Mp4SampleEntryFlac,
-    # トラック情報
-    Mp4TrackInfo,
-    # Demuxer 関連
     Mp4DemuxSample,
     Mp4FileDemuxer,
-    # Muxer 関連
-    Mp4MuxSample,
     Mp4FileMuxer,
     Mp4FileMuxerOptions,
+    Mp4MuxSample,
+    Mp4SampleEntryAv01,
+    Mp4SampleEntryAvc1,
+    Mp4SampleEntryFlac,
+    Mp4SampleEntryHev1,
+    Mp4SampleEntryHvc1,
+    Mp4SampleEntryMp4a,
+    Mp4SampleEntryOpus,
+    Mp4SampleEntryVp08,
+    Mp4SampleEntryVp09,
+    Mp4TrackInfo,
+    estimate_maximum_moov_box_size,
+    library_version,
 )
 
 __version__ = version("mp4-py")
@@ -49,7 +44,7 @@ Mp4SampleEntry = Union[
 
 
 def native_version() -> str:
-    """mp4-rust のバージョンを返す"""
+    """バインド対象の shiguredo_mp4 (Rust クレート) のバージョンを返す"""
     return library_version()
 
 

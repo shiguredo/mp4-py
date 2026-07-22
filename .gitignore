@@ -1,18 +1,29 @@
-# Python-generated files
+# Python 生成物
 __pycache__/
 *.py[oc]
-*.pyi
 build/
-_build/
-_source/
-_install/
 dist/
 wheels/
+wheelhouse/
 *.egg-info
 .venv/
+.venv-*/
 .ruff_cache/
 .mypy_cache/
 .hypothesis/
+.pytest_cache/
+
+# maturin 出力
+/stubs/
+*.pyi
+
+# Rust / Cargo
+/target/
+
+# maturin develop で python パッケージ内に配置される拡張モジュール
+/python/mp4/*.so
+/python/mp4/*.pyd
+/python/mp4/*.dylib
 
 # macos
 .DS_Store

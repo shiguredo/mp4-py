@@ -1,6 +1,6 @@
 [project]
 name = "mp4-py"
-description = "Python bindings for mp4-rust"
+description = "Python bindings for shiguredo/mp4-rs"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -10,16 +10,16 @@ classifiers = [
   "Operating System :: MacOS :: MacOS X",
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
-  "Programming Language :: C",
-  "Programming Language :: C++",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Free Threading :: 2 - Beta",
+  "Programming Language :: Rust",
 ]
 dependencies = []
+# Cargo.toml の [package] version をそのまま使う (maturin が自動で読み取る)。
 dynamic = ["version"]
 
 [project.urls]
@@ -32,8 +32,15 @@ lint = ["ruff", "ty"]
 test = ["hypothesis", "pytest", "pytest-timeout"]
 
 [build-system]
-requires = ["nanobind>=2.13.0", "scikit-build-core"]
-build-backend = "scikit_build_core.build"
+requires = ["maturin>=1.14,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module", "pyo3/experimental-inspect"]
+manifest-path = "Cargo.toml"
+# 拡張モジュールは Python パッケージ mp4 内の mp4_ext として配置する。
+module-name = "mp4.mp4_ext"
+python-source = "python"
 
 [tool.pytest.ini_options]
 # Property-Based Testing (PBT) は prop_ prefix を使用する
@@ -44,25 +51,6 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-
-[tool.scikit-build]
-minimum-version = "0.12.2"
-sdist.include = ["VERSION"]
-build-dir = "_build"
-
-[tool.scikit-build.cmake]
-version = ">=4.2"
-args = ["-DCMAKE_BUILD_TYPE=Release"]
-define = { "CMAKE_CXX_STANDARD" = "20" }
-
-[tool.scikit-build.wheel]
-packages = ["src/mp4"]
-expand-macos-universal-tags = true
-
-[tool.scikit-build.metadata.version]
-provider = "scikit_build_core.metadata.regex"
-input = "VERSION"
-regex = "^(?P<value>.+)$"
 
 [tool.uv]
 package = false

@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-agents-md-compliance-violations
 - Polished: {YYYY-MM-DD}
@@ -135,3 +135,7 @@ test: develop
 3. `fix(build): Makefile test ターゲットに NO_UV_SYNC=1 を追加する`
 
 または単一コミット `fix: AGENTS.md 規約違反 3 件を修正する` にまとめても可 (shiguredo-git スキルで判断)。
+
+## 対応結果
+
+3 件全て解消済み: (1) `src/mp4_ext.cpp` そのものが削除された (2) `dev.py` は Cargo.toml 対応の版に置き換えられ Optional 表記は残っていない (3) `Makefile` そのものが削除された。よって closed とする。
