@@ -8,7 +8,8 @@
 - pyo3 の feature は `extension-module`, `abi3-py312`, `experimental-inspect` を有効化する
 - `abi3-py312` により Python 3.12 以降の GIL 有効ビルドは 1 wheel で共有する
 - Free-Threading (3.14t) は abi3 対象外なのでバージョン固有 wheel を別ビルドする
-- `#[pymodule(gil_used = false)]` inline module 形式で書くこと
+- `#[pymodule]` inline module 形式で書くこと
+  - PyO3 0.28 以降は `gil_used = false` が既定なので明示指定は不要
   - 関数形式 (`#[pymodule] fn`) は `--generate-stubs` が動かない
 - SampleEntry 系の pyclass は `frozen, from_py_object` を付ける (immutable + Sync)
 - Muxer / Demuxer / DemuxSample の pyclass は `frozen, skip_from_py_object` を付ける
