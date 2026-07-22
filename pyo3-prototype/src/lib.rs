@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use pyo3::exceptions::{PyRuntimeError, PyStopIteration, PyValueError};
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{PyBytes, PyString, PyType};
 use pyo3::{Py, PyAny};
 
-// pyo3 0.29+ で PyObject が prelude から外れたので alias を張り直す
+// PyO3 0.29 で `pyo3::PyObject` の型 alias が削除されたため、下流で使いやすいように張り直す。
 type PyObject = Py<PyAny>;
 
 use shiguredo_mp4::{
@@ -91,19 +92,34 @@ fn default_audio(channel_count: u8, sample_rate: u16, sample_size: u16) -> Audio
     }
 }
 
-// Python の bytes-like (bytes / bytearray / memoryview / list[int]) を Vec<u8> に変換する。
-// nanobind 版は list[bytes] を含むリスト構造も受け付けるが、それは呼び出し側で処理する。
+// Python の bytes-like (bytes / bytearray / memoryview / buffer protocol 対応) を Vec<u8> に変換する。
+// nanobind 版は Python の builtins.bytes(iterable) にフォールバックしていたが、
+// PyO3 0.29 では PyBuffer 経由でゼロ経路が短くなる。
 fn extract_bytes(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    // 高速パス: すでに bytes ならスライスをそのままコピー
     if let Ok(b) = obj.cast::<PyBytes>() {
-        Ok(b.as_bytes().to_vec())
-    } else {
-        // bytes(iterable) を経由して bytes に変換する
-        let builtins = py.import("builtins")?;
-        let bytes_type = builtins.getattr("bytes")?;
-        let converted = bytes_type.call1((obj,))?;
-        let b = converted.cast::<PyBytes>()?;
-        Ok(b.as_bytes().to_vec())
+        return Ok(b.as_bytes().to_vec());
     }
+    // 汎用パス: buffer protocol 経由 (bytearray / memoryview / array.array 等)
+    if let Ok(buf) = pyo3::buffer::PyBuffer::<u8>::get(obj) {
+        return buf.to_vec(py);
+    }
+    // 最終フォールバック: Python 側の bytes() で変換 (list[int] 等)
+    let builtins = py.import("builtins")?;
+    let bytes_type = builtins.getattr("bytes")?;
+    let converted = bytes_type.call1((obj,))?;
+    let b = converted.cast::<PyBytes>()?;
+    Ok(b.as_bytes().to_vec())
+}
+
+// 入力が既に bytes ならその Py 参照を無コピーで保持し、それ以外はコピーして bytes 化する。
+// Mp4MuxSample.data のように大きなペイロードを保持する場合の二重コピー削減に使う。
+fn adopt_or_copy_bytes(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Py<PyBytes>> {
+    if let Ok(b) = obj.cast::<PyBytes>() {
+        return Ok(b.clone().unbind());
+    }
+    let v = extract_bytes(py, obj)?;
+    Ok(PyBytes::new(py, &v).unbind())
 }
 
 fn extract_bytes_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<u8>>> {
@@ -117,24 +133,24 @@ fn extract_bytes_list(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<Ve
 
 // ===== SampleEntry: Vp08 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryVp08 {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     width: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     height: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     bit_depth: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_subsampling: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     video_full_range_flag: bool,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     colour_primaries: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     transfer_characteristics: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     matrix_coefficients: u8,
 }
 
@@ -218,28 +234,28 @@ impl Mp4SampleEntryVp08 {
 
 // ===== SampleEntry: Vp09 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryVp09 {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     width: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     height: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     profile: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     level: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     bit_depth: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_subsampling: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     video_full_range_flag: bool,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     colour_primaries: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     transfer_characteristics: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     matrix_coefficients: u8,
 }
 
@@ -324,28 +340,28 @@ impl Mp4SampleEntryVp09 {
 
 // ===== SampleEntry: Avc1 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryAvc1 {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     width: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     height: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     avc_profile_indication: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     avc_level_indication: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     profile_compatibility: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     length_size_minus_one: u8,
     sps_data: Vec<Vec<u8>>,
     pps_data: Vec<Vec<u8>>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_format: Option<u8>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     bit_depth_luma_minus8: Option<u8>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     bit_depth_chroma_minus8: Option<u8>,
 }
 
@@ -411,24 +427,12 @@ impl Mp4SampleEntryAvc1 {
             .collect()
     }
 
-    #[setter]
-    fn set_sps_data(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.sps_data = extract_bytes_list(py, value)?;
-        Ok(())
-    }
-
     #[getter]
     fn pps_data(&self, py: Python<'_>) -> Vec<Py<PyBytes>> {
         self.pps_data
             .iter()
             .map(|v| PyBytes::new(py, v).unbind())
             .collect()
-    }
-
-    #[setter]
-    fn set_pps_data(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.pps_data = extract_bytes_list(py, value)?;
-        Ok(())
     }
 }
 
@@ -568,7 +572,7 @@ impl HevcCommon {
 // マクロで Hev1/Hvc1 の pyclass を展開する (差分はコンストラクタと to_sample_entry のバリアントのみ)
 macro_rules! hevc_pyclass {
     ($cls:ident, $box_ty:ident, $variant:ident) => {
-        #[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+        #[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
         #[derive(Clone)]
         struct $cls {
             inner: HevcCommon,
@@ -672,17 +676,9 @@ macro_rules! hevc_pyclass {
             fn width(&self) -> u16 {
                 self.inner.width
             }
-            #[setter]
-            fn set_width(&mut self, v: u16) {
-                self.inner.width = v;
-            }
             #[getter]
             fn height(&self) -> u16 {
                 self.inner.height
-            }
-            #[setter]
-            fn set_height(&mut self, v: u16) {
-                self.inner.height = v;
             }
             #[getter]
             fn general_profile_idc(&self) -> u8 {
@@ -729,34 +725,34 @@ hevc_pyclass!(Mp4SampleEntryHvc1, Hvc1Box, Hvc1);
 
 // ===== SampleEntry: Av01 =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryAv01 {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     width: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     height: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     seq_profile: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     seq_level_idx_0: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     seq_tier_0: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     high_bitdepth: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     twelve_bit: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     monochrome: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_subsampling_x: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_subsampling_y: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     chroma_sample_position: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     initial_presentation_delay_present: bool,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     initial_presentation_delay_minus_one: u8,
     config_obus: Vec<u8>,
 }
@@ -821,11 +817,6 @@ impl Mp4SampleEntryAv01 {
         PyBytes::new(py, &self.config_obus).unbind()
     }
 
-    #[setter]
-    fn set_config_obus(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.config_obus = extract_bytes(py, value)?;
-        Ok(())
-    }
 }
 
 impl Mp4SampleEntryAv01 {
@@ -878,20 +869,20 @@ impl Mp4SampleEntryAv01 {
 
 // ===== SampleEntry: Opus =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryOpus {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     channel_count: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_rate: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_size: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     pre_skip: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     input_sample_rate: Option<u32>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     output_gain: i16,
 }
 
@@ -954,20 +945,20 @@ impl Mp4SampleEntryOpus {
 
 // ===== SampleEntry: Mp4a =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryMp4a {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     channel_count: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_rate: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_size: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     buffer_size_db: u32,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     max_bitrate: u32,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     avg_bitrate: u32,
     dec_specific_info: Vec<u8>,
 }
@@ -1011,11 +1002,6 @@ impl Mp4SampleEntryMp4a {
         PyBytes::new(py, &self.dec_specific_info).unbind()
     }
 
-    #[setter]
-    fn set_dec_specific_info(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.dec_specific_info = extract_bytes(py, value)?;
-        Ok(())
-    }
 }
 
 impl Mp4SampleEntryMp4a {
@@ -1074,14 +1060,14 @@ impl Mp4SampleEntryMp4a {
 
 // ===== SampleEntry: Flac =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4SampleEntryFlac {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     channel_count: u8,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_rate: u16,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     sample_size: u16,
     streaminfo_data: Vec<u8>,
 }
@@ -1115,11 +1101,6 @@ impl Mp4SampleEntryFlac {
         PyBytes::new(py, &self.streaminfo_data).unbind()
     }
 
-    #[setter]
-    fn set_streaminfo_data(&mut self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.streaminfo_data = extract_bytes(py, value)?;
-        Ok(())
-    }
 }
 
 impl Mp4SampleEntryFlac {
@@ -1156,68 +1137,80 @@ impl Mp4SampleEntryFlac {
 
 // ===== SampleEntry Union の Python ↔ Rust dispatch =====
 
-fn py_to_sample_entry(obj: &Bound<'_, PyAny>) -> PyResult<SampleEntry> {
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryVp08>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryVp09>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryAvc1>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryHev1>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryHvc1>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryAv01>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryOpus>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryMp4a>>() {
-        return Ok(v.to_sample_entry());
-    }
-    if let Ok(v) = obj.extract::<PyRef<Mp4SampleEntryFlac>>() {
-        return Ok(v.to_sample_entry());
-    }
-    Err(PyValueError::new_err(format!(
-        "unsupported sample_entry type: {}",
-        obj.get_type().name()?
-    )))
+// タグ付き Union を FromPyObject / IntoPyObject 双方に derive させることで、
+// .pyi 生成時に sample_entry の型が Union[...9 種...] として出るようにする。
+#[derive(FromPyObject, IntoPyObject)]
+enum Mp4SampleEntryAny {
+    Vp08(Py<Mp4SampleEntryVp08>),
+    Vp09(Py<Mp4SampleEntryVp09>),
+    Avc1(Py<Mp4SampleEntryAvc1>),
+    Hev1(Py<Mp4SampleEntryHev1>),
+    Hvc1(Py<Mp4SampleEntryHvc1>),
+    Av01(Py<Mp4SampleEntryAv01>),
+    Opus(Py<Mp4SampleEntryOpus>),
+    Mp4a(Py<Mp4SampleEntryMp4a>),
+    Flac(Py<Mp4SampleEntryFlac>),
 }
 
-fn sample_entry_to_py(py: Python<'_>, entry: &SampleEntry) -> PyResult<Option<PyObject>> {
-    let obj: PyObject = match entry {
-        SampleEntry::Vp08(b) => Py::new(py, Mp4SampleEntryVp08::from_box(b))?.into_any(),
-        SampleEntry::Vp09(b) => Py::new(py, Mp4SampleEntryVp09::from_box(b))?.into_any(),
-        SampleEntry::Avc1(b) => Py::new(py, Mp4SampleEntryAvc1::from_box(b))?.into_any(),
-        SampleEntry::Hev1(b) => Py::new(py, Mp4SampleEntryHev1::from_box(b))?.into_any(),
-        SampleEntry::Hvc1(b) => Py::new(py, Mp4SampleEntryHvc1::from_box(b))?.into_any(),
-        SampleEntry::Av01(b) => Py::new(py, Mp4SampleEntryAv01::from_box(b))?.into_any(),
-        SampleEntry::Opus(b) => Py::new(py, Mp4SampleEntryOpus::from_box(b))?.into_any(),
-        SampleEntry::Mp4a(b) => Py::new(py, Mp4SampleEntryMp4a::from_box(b))?.into_any(),
-        SampleEntry::Flac(b) => Py::new(py, Mp4SampleEntryFlac::from_box(b))?.into_any(),
+impl Mp4SampleEntryAny {
+    fn clone_ref(&self, py: Python<'_>) -> Self {
+        match self {
+            Self::Vp08(p) => Self::Vp08(p.clone_ref(py)),
+            Self::Vp09(p) => Self::Vp09(p.clone_ref(py)),
+            Self::Avc1(p) => Self::Avc1(p.clone_ref(py)),
+            Self::Hev1(p) => Self::Hev1(p.clone_ref(py)),
+            Self::Hvc1(p) => Self::Hvc1(p.clone_ref(py)),
+            Self::Av01(p) => Self::Av01(p.clone_ref(py)),
+            Self::Opus(p) => Self::Opus(p.clone_ref(py)),
+            Self::Mp4a(p) => Self::Mp4a(p.clone_ref(py)),
+            Self::Flac(p) => Self::Flac(p.clone_ref(py)),
+        }
+    }
+
+    fn to_core(&self, _py: Python<'_>) -> SampleEntry {
+        match self {
+            Self::Vp08(p) => p.get().to_sample_entry(),
+            Self::Vp09(p) => p.get().to_sample_entry(),
+            Self::Avc1(p) => p.get().to_sample_entry(),
+            Self::Hev1(p) => p.get().to_sample_entry(),
+            Self::Hvc1(p) => p.get().to_sample_entry(),
+            Self::Av01(p) => p.get().to_sample_entry(),
+            Self::Opus(p) => p.get().to_sample_entry(),
+            Self::Mp4a(p) => p.get().to_sample_entry(),
+            Self::Flac(p) => p.get().to_sample_entry(),
+        }
+    }
+}
+
+fn sample_entry_from_core(py: Python<'_>, entry: &SampleEntry) -> PyResult<Option<Mp4SampleEntryAny>> {
+    let out = match entry {
+        SampleEntry::Vp08(b) => Mp4SampleEntryAny::Vp08(Py::new(py, Mp4SampleEntryVp08::from_box(b))?),
+        SampleEntry::Vp09(b) => Mp4SampleEntryAny::Vp09(Py::new(py, Mp4SampleEntryVp09::from_box(b))?),
+        SampleEntry::Avc1(b) => Mp4SampleEntryAny::Avc1(Py::new(py, Mp4SampleEntryAvc1::from_box(b))?),
+        SampleEntry::Hev1(b) => Mp4SampleEntryAny::Hev1(Py::new(py, Mp4SampleEntryHev1::from_box(b))?),
+        SampleEntry::Hvc1(b) => Mp4SampleEntryAny::Hvc1(Py::new(py, Mp4SampleEntryHvc1::from_box(b))?),
+        SampleEntry::Av01(b) => Mp4SampleEntryAny::Av01(Py::new(py, Mp4SampleEntryAv01::from_box(b))?),
+        SampleEntry::Opus(b) => Mp4SampleEntryAny::Opus(Py::new(py, Mp4SampleEntryOpus::from_box(b))?),
+        SampleEntry::Mp4a(b) => Mp4SampleEntryAny::Mp4a(Py::new(py, Mp4SampleEntryMp4a::from_box(b))?),
+        SampleEntry::Flac(b) => Mp4SampleEntryAny::Flac(Py::new(py, Mp4SampleEntryFlac::from_box(b))?),
         SampleEntry::Unknown(_) => return Ok(None),
     };
-    Ok(Some(obj))
+    let _ = py;
+    Ok(Some(out))
 }
 
 // ===== Mp4TrackInfo =====
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, from_py_object)]
 #[derive(Clone)]
 struct Mp4TrackInfo {
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     track_id: u32,
     // Python 側は "audio" / "video" 固定なので String で保持する
     kind: String,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     duration: u64,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     timescale: u32,
 }
 
@@ -1241,13 +1234,6 @@ impl Mp4TrackInfo {
         &self.kind
     }
 
-    #[setter]
-    fn set_kind(&mut self, value: String) -> PyResult<()> {
-        let _ = str_to_track_kind(&value)?;
-        self.kind = value;
-        Ok(())
-    }
-
     fn __repr__(&self) -> String {
         format!(
             "Mp4TrackInfo(track_id={}, kind={:?}, duration={}, timescale={})",
@@ -1263,7 +1249,7 @@ struct Mp4MuxSample {
     #[pyo3(get, set)]
     track_kind: String,
     // 9 種の SampleEntry のうちいずれか (None なら前と同じ)
-    sample_entry: Option<PyObject>,
+    sample_entry: Option<Mp4SampleEntryAny>,
     #[pyo3(get, set)]
     keyframe: bool,
     #[pyo3(get, set)]
@@ -1291,7 +1277,7 @@ impl Mp4MuxSample {
     fn new(
         py: Python<'_>,
         track_kind: String,
-        sample_entry: Option<PyObject>,
+        sample_entry: Option<Mp4SampleEntryAny>,
         keyframe: bool,
         timescale: u32,
         duration: u32,
@@ -1299,12 +1285,8 @@ impl Mp4MuxSample {
         composition_time_offset: Option<i64>,
     ) -> PyResult<Self> {
         let _ = str_to_track_kind(&track_kind)?;
-        // sample_entry は妥当な型かだけ先にチェックしておく
-        if let Some(ref e) = sample_entry {
-            let _ = py_to_sample_entry(e.bind(py))?;
-        }
-        let data_bytes = extract_bytes(py, data)?;
-        let data_py = PyBytes::new(py, &data_bytes).unbind();
+        // bytes ならそのまま Py<PyBytes> を保持して二重コピーを回避する
+        let data_py = adopt_or_copy_bytes(py, data)?;
         Ok(Self {
             track_kind,
             sample_entry,
@@ -1317,17 +1299,13 @@ impl Mp4MuxSample {
     }
 
     #[getter]
-    fn sample_entry(&self, py: Python<'_>) -> Option<PyObject> {
+    fn sample_entry(&self, py: Python<'_>) -> Option<Mp4SampleEntryAny> {
         self.sample_entry.as_ref().map(|s| s.clone_ref(py))
     }
 
     #[setter]
-    fn set_sample_entry(&mut self, py: Python<'_>, value: Option<PyObject>) -> PyResult<()> {
-        if let Some(ref e) = value {
-            let _ = py_to_sample_entry(e.bind(py))?;
-        }
+    fn set_sample_entry(&mut self, value: Option<Mp4SampleEntryAny>) {
         self.sample_entry = value;
-        Ok(())
     }
 
     #[getter]
@@ -1350,7 +1328,7 @@ impl Mp4MuxSample {
 struct Mp4DemuxSample {
     #[pyo3(get)]
     track: Py<Mp4TrackInfo>,
-    sample_entry: Option<PyObject>,
+    sample_entry: Option<Mp4SampleEntryAny>,
     #[pyo3(get)]
     keyframe: bool,
     #[pyo3(get)]
@@ -1385,7 +1363,7 @@ impl Mp4DemuxSample {
     #[allow(clippy::too_many_arguments)]
     fn new(
         track: Py<Mp4TrackInfo>,
-        sample_entry: Option<PyObject>,
+        sample_entry: Option<Mp4SampleEntryAny>,
         keyframe: bool,
         timestamp: u64,
         duration: u32,
@@ -1409,14 +1387,14 @@ impl Mp4DemuxSample {
     }
 
     #[getter]
-    fn sample_entry(&self, py: Python<'_>) -> Option<PyObject> {
+    fn sample_entry(&self, py: Python<'_>) -> Option<Mp4SampleEntryAny> {
         self.sample_entry.as_ref().map(|s| s.clone_ref(py))
     }
 
     #[getter]
     fn data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         {
-            let cache = self.data_cache.lock().unwrap();
+            let cache = self.data_cache.lock_py_attached(py).unwrap();
             if let Some(ref b) = *cache {
                 return Ok(b.clone_ref(py));
             }
@@ -1440,7 +1418,7 @@ impl Mp4DemuxSample {
                 read.bind(py).as_bytes().len()
             )));
         }
-        *self.data_cache.lock().unwrap() = Some(read.clone_ref(py));
+        *self.data_cache.lock_py_attached(py).unwrap() = Some(read.clone_ref(py));
         Ok(read)
     }
 
@@ -1579,7 +1557,7 @@ impl Mp4FileMuxer {
     }
 
     fn append_sample(&self, py: Python<'_>, sample: &Mp4MuxSample) -> PyResult<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         if state.closed {
             return Err(PyRuntimeError::new_err("muxer is closed"));
         }
@@ -1589,18 +1567,16 @@ impl Mp4FileMuxer {
             .ok_or_else(|| PyRuntimeError::new_err("muxer already dropped"))?;
 
         let data_offset: u64 = self.stream.call_method0(py, "tell")?.extract(py)?;
-        let data_bytes = sample.data.bind(py).as_bytes();
+        // Mp4MuxSample.data はすでに Py<PyBytes> なので、新しい PyBytes を作らず
+        // 元の Python bytes をそのまま stream.write に渡して余分なコピーを避ける。
+        let data_len = sample.data.bind(py).as_bytes().len();
         self.stream
-            .call_method1(py, "write", (PyBytes::new(py, data_bytes),))?;
+            .call_method1(py, "write", (sample.data.clone_ref(py),))?;
 
         let timescale = NonZeroU32::new(sample.timescale)
             .ok_or_else(|| PyValueError::new_err("timescale must be non-zero"))?;
         let track_kind = str_to_track_kind(&sample.track_kind)?;
-        let sample_entry_opt = sample
-            .sample_entry
-            .as_ref()
-            .map(|e| py_to_sample_entry(e.bind(py)))
-            .transpose()?;
+        let sample_entry_opt = sample.sample_entry.as_ref().map(|e| e.to_core(py));
 
         let core_sample = CoreMuxSample {
             track_kind,
@@ -1610,7 +1586,7 @@ impl Mp4FileMuxer {
             duration: sample.duration,
             composition_time_offset: sample.composition_time_offset,
             data_offset,
-            data_size: data_bytes.len(),
+            data_size: data_len,
         };
 
         core.append_sample(&core_sample).map_err(map_err)?;
@@ -1618,12 +1594,12 @@ impl Mp4FileMuxer {
     }
 
     fn finalize(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         self.finalize_locked(py, &mut state)
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         if state.closed {
             return Ok(());
         }
@@ -1788,7 +1764,7 @@ impl Mp4FileDemuxer {
 
     #[getter]
     fn tracks(&self, py: Python<'_>) -> PyResult<Vec<Py<Mp4TrackInfo>>> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         if state.closed {
             return Err(PyRuntimeError::new_err("demuxer is closed"));
         }
@@ -1807,7 +1783,7 @@ impl Mp4FileDemuxer {
     }
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Py<Mp4DemuxSample>> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         if state.closed {
             return Err(PyStopIteration::new_err(()));
         }
@@ -1877,7 +1853,7 @@ impl Mp4FileDemuxer {
             {
                 let sample_entry_py = sample_entry_owned
                     .as_ref()
-                    .map(|se| sample_entry_to_py(py, se))
+                    .map(|se| sample_entry_from_core(py, se))
                     .transpose()?
                     .flatten();
                 let track_py = state
@@ -1905,7 +1881,7 @@ impl Mp4FileDemuxer {
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock_py_attached(py).unwrap();
         if state.closed {
             return Ok(());
         }
