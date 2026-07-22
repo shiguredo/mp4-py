@@ -1,0 +1,10 @@
+# Cargo
+/target/
+
+# maturin develop で python パッケージ内に配置される so
+/python/mp4_pyo3/*.so
+/python/mp4_pyo3/*.pyd
+/python/mp4_pyo3/*.dylib
+
+# ローカル開発用の venv
+/.venv/

@@ -1,0 +1,19 @@
+# nanobind + scikit-build-core + CMake の三段構えを、
+# maturin + Cargo だけの単段構成にできるかの検証。
+[project]
+name = "mp4-pyo3-prototype"
+version = "0.0.0"
+description = "Investigate binding shiguredo_mp4 via PyO3"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+# Rust クレート側で生成する cdylib を Python パッケージとして配布する。
+module-name = "mp4_pyo3.mp4_pyo3_ext"
+python-source = "python"
+features = ["pyo3/extension-module"]
+manifest-path = "Cargo.toml"

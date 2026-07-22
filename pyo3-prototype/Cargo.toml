@@ -1,0 +1,21 @@
+[package]
+name = "mp4_pyo3"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+# Python 拡張モジュールとして cdylib を生成する
+name = "mp4_pyo3_ext"
+crate-type = ["cdylib"]
+
+[dependencies]
+# 直近のリリース版タグ 2026.3.0 を path 依存で参照する。
+# 本番向けなら git 依存で "tag = 2026.3.0" を使う。
+shiguredo_mp4 = { path = "../../mp4-rs" }
+# PyO3 0.23 以降は Free-Threading (Py_GIL_DISABLED) に正式対応している。
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py312"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
