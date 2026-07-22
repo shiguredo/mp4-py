@@ -8,3 +8,10 @@
 
 # ローカル開発用の venv
 /.venv/
+/.venv-ft/
+
+# maturin generate-stubs の出力 (ビルド時に自動生成される)
+/stubs/
+
+# pytest cache
+/.pytest_cache/
