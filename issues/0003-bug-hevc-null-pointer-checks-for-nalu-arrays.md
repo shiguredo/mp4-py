@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-hevc-null-pointer-checks-for-nalu-arrays
 - Polished: {YYYY-MM-DD}
@@ -79,3 +79,7 @@ C API 側の型宣言 (`mp4.h:482-485` Hev1、`mp4.h:542-545` Hvc1) はいずれ
    同時に、`raw.nalu_counts ? raw.nalu_counts[i] : 0` の三項演算子は上位ガードで NULL が排除されているので `raw.nalu_counts[i]` に簡略化してもよい
 2. `src/mp4_ext.cpp:342` の Hvc1 側にも同じ書き換えを適用
 3. 本 issue の対応は `issues/0011-refactor-hevc-hev1-hvc1-duplication.md` と競合しうる。0011 でコピペ解消するタイミングでは、共通化された 1 箇所を修正する形になる
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えたため、C API のポインタフィールドを Rust の Vec や参照経由でしか扱わなくなり、NULL チェック観点そのものが消滅した。よって closed とする。
