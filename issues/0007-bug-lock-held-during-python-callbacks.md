@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-22
 - Model: Opus 4.7
 - Branch: feature/fix-lock-held-during-python-callbacks
 - Polished: {YYYY-MM-DD}
@@ -78,3 +78,7 @@ High。
 2. `README.md` に「注意: 同一 Muxer/Demuxer インスタンスへの再入は禁止」節を追記
 3. `tests/test_free_threading.py` に再入検出テスト (xfail + timeout) を追加
 4. 方針 B の実装を試行する場合は、`append_sample` から着手 (最も呼び出し頻度が高い)。実装は別 issue とする
+
+## 対応結果
+
+バインディングを nanobind から PyO3 に置き換えた際、`std::sync::Mutex` + `pyo3::sync::MutexExt::lock_py_attached(py)` を採用した。この API は Python コールバック呼び出し前後で Python ランタイムからのデタッチ/アタッチを行うため、GC の stop-the-world とロック保持の競合が回避される。よって closed とする。
