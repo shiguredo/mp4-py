@@ -1482,7 +1482,7 @@ struct MuxerState {
     closed: bool,
 }
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", skip_from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, skip_from_py_object)]
 struct Mp4FileMuxer {
     state: Mutex<MuxerState>,
     stream: PyObject,
@@ -1641,7 +1641,7 @@ struct DemuxerState {
     ended: bool,
 }
 
-#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", skip_from_py_object)]
+#[pyclass(module = "mp4_pyo3.mp4_pyo3_ext", frozen, skip_from_py_object)]
 struct Mp4FileDemuxer {
     state: Mutex<DemuxerState>,
     input_stream: PyObject,
