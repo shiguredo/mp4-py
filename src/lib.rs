@@ -10,17 +10,19 @@ use pyo3::sync::MutexExt;
 use pyo3::types::{PyBytes, PyString};
 
 use shiguredo_mp4::{
-    FixedPointNumber, TrackKind, Uint,
+    FixedPointNumber, LanguageCode, TrackKind, Uint, Utf8String,
     boxes::{
-        AudioSampleEntryFields, Av01Box, Av1cBox, Avc1Box, AvccBox, DflaBox, DopsBox, EsdsBox,
-        FlacBox, FlacMetadataBlock, Hev1Box, Hvc1Box, HvccBox, HvccNalUintArray, Mp4aBox, OpusBox,
-        SampleEntry, VisualSampleEntryFields, Vp08Box, Vp09Box, VpccBox,
+        AudioSampleEntryFields, Av01Box, Av1cBox, Avc1Box, AvccBox, BoxRecord, DflaBox, DopsBox,
+        EsdsBox, FlacBox, FlacMetadataBlock, FontRecord, FtabBox, Hev1Box, Hvc1Box, HvccBox,
+        HvccNalUintArray, Mp4aBox, OpusBox, SampleEntry, StppBox, StyleRecord, Tx3gBox,
+        VisualSampleEntryFields, Vp08Box, Vp09Box, VpccBox, VttCBox, WvttBox,
     },
     demux::{DemuxError, Input as DemuxInput, Mp4FileDemuxer as CoreDemuxer, RequiredInput},
     descriptors::{DecoderConfigDescriptor, DecoderSpecificInfo, EsDescriptor, SlConfigDescriptor},
     mux::{
         Mp4FileMuxer as CoreMuxer, Mp4FileMuxerOptions as CoreMuxerOptions,
-        Sample as CoreMuxSample, estimate_maximum_moov_box_size as core_estimate_moov,
+        Sample as CoreMuxSample, TrackMetadata as CoreTrackMetadata,
+        estimate_maximum_moov_box_size as core_estimate_moov,
     },
 };
 
@@ -39,8 +41,9 @@ fn library_version() -> &'static str {
 }
 
 #[pyfunction]
-fn estimate_maximum_moov_box_size(audio_sample_count: u32, video_sample_count: u32) -> usize {
-    core_estimate_moov(&[audio_sample_count as usize, video_sample_count as usize])
+#[pyo3(signature = (*sample_counts))]
+fn estimate_maximum_moov_box_size(sample_counts: Vec<usize>) -> usize {
+    core_estimate_moov(&sample_counts)
 }
 
 fn map_err<E: std::fmt::Display>(e: E) -> PyErr {
@@ -58,6 +61,7 @@ fn track_kind_to_str(kind: TrackKind) -> &'static str {
     match kind {
         TrackKind::Audio => "audio",
         TrackKind::Video => "video",
+        TrackKind::Subtitle => "subtitle",
     }
 }
 
@@ -65,8 +69,9 @@ fn str_to_track_kind(s: &str) -> PyResult<TrackKind> {
     match s {
         "audio" => Ok(TrackKind::Audio),
         "video" => Ok(TrackKind::Video),
+        "subtitle" => Ok(TrackKind::Subtitle),
         other => Err(PyValueError::new_err(format!(
-            "invalid track_kind: {other:?} (expected 'audio' or 'video')"
+            "invalid track_kind: {other:?} (expected 'audio', 'video' or 'subtitle')"
         ))),
     }
 }
@@ -571,6 +576,14 @@ impl HevcCommon {
 }
 
 // マクロで Hev1/Hvc1 の pyclass を展開する (差分はコンストラクタと to_sample_entry のバリアントのみ)
+//
+// [NOTE] rustfmt の既知のバグ (rust-lang/rustfmt#5489) により、
+// macro_rules! 内のマルチライン属性 (`#[pyo3(signature = (...))]` など) の
+// インデントが実行のたびに増加し続けて収束しない。
+// このため本マクロ定義は `#[rustfmt::skip]` で rustfmt のフォーマット対象外にする。
+// マクロ展開後のコード (Mp4SampleEntryHev1 / Mp4SampleEntryHvc1 の本体) は
+// 通常の struct として rustfmt の対象になるため、フォーマット品質は保たれる。
+#[rustfmt::skip]
 macro_rules! hevc_pyclass {
     ($cls:ident, $box_ty:ident, $variant:ident) => {
         #[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
@@ -583,27 +596,27 @@ macro_rules! hevc_pyclass {
         impl $cls {
             #[new]
             #[pyo3(signature = (
-                        width,
-                        height,
-                        general_profile_idc,
-                        general_level_idc,
-                        nalu_types = None,
-                        nalu_data = None,
-                        general_profile_space = 0,
-                        general_tier_flag = 0,
-                        general_profile_compatibility_flags = 0,
-                        general_constraint_indicator_flags = 0,
-                        chroma_format_idc = 1,
-                        bit_depth_luma_minus8 = 0,
-                        bit_depth_chroma_minus8 = 0,
-                        min_spatial_segmentation_idc = 0,
-                        parallelism_type = 0,
-                        avg_frame_rate = 0,
-                        constant_frame_rate = 0,
-                        num_temporal_layers = 0,
-                        temporal_id_nested = 0,
-                        length_size_minus_one = 3,
-                    ))]
+                                width,
+                                height,
+                                general_profile_idc,
+                                general_level_idc,
+                                nalu_types = None,
+                                nalu_data = None,
+                                general_profile_space = 0,
+                                general_tier_flag = 0,
+                                general_profile_compatibility_flags = 0,
+                                general_constraint_indicator_flags = 0,
+                                chroma_format_idc = 1,
+                                bit_depth_luma_minus8 = 0,
+                                bit_depth_chroma_minus8 = 0,
+                                min_spatial_segmentation_idc = 0,
+                                parallelism_type = 0,
+                                avg_frame_rate = 0,
+                                constant_frame_rate = 0,
+                                num_temporal_layers = 0,
+                                temporal_id_nested = 0,
+                                length_size_minus_one = 3,
+                            ))]
             #[allow(clippy::too_many_arguments)]
             fn new(
                 py: Python<'_>,
@@ -1136,6 +1149,290 @@ impl Mp4SampleEntryFlac {
     }
 }
 
+// ===== SampleEntry: Stpp =====
+
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
+#[derive(Clone)]
+struct Mp4SampleEntryStpp {
+    #[pyo3(get)]
+    namespace: String,
+    #[pyo3(get)]
+    schema_location: String,
+    #[pyo3(get)]
+    auxiliary_mime_types: String,
+}
+
+#[pymethods]
+impl Mp4SampleEntryStpp {
+    #[new]
+    #[pyo3(signature = (namespace, schema_location = "", auxiliary_mime_types = ""))]
+    fn new(namespace: &str, schema_location: &str, auxiliary_mime_types: &str) -> Self {
+        Self {
+            namespace: namespace.to_owned(),
+            schema_location: schema_location.to_owned(),
+            auxiliary_mime_types: auxiliary_mime_types.to_owned(),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Mp4SampleEntryStpp(namespace={:?}, schema_location={:?})",
+            self.namespace, self.schema_location
+        )
+    }
+}
+
+impl Mp4SampleEntryStpp {
+    fn to_sample_entry(&self) -> SampleEntry {
+        // Utf8String は null を含む文字列を拒否するが、Python 側の String は
+        // null を含む Unicode 文字列を保持できるため、ここで変換を検証する
+        let namespace =
+            Utf8String::new(&self.namespace).expect("namespace must not contain null characters");
+        let schema_location = Utf8String::new(&self.schema_location)
+            .expect("schema_location must not contain null characters");
+        let auxiliary_mime_types = Utf8String::new(&self.auxiliary_mime_types)
+            .expect("auxiliary_mime_types must not contain null characters");
+        SampleEntry::Stpp(StppBox {
+            data_reference_index: StppBox::DEFAULT_DATA_REFERENCE_INDEX,
+            namespace,
+            schema_location,
+            auxiliary_mime_types,
+            unknown_boxes: Vec::new(),
+        })
+    }
+
+    fn from_box(b: &StppBox) -> Self {
+        Self {
+            namespace: b.namespace.get().to_owned(),
+            schema_location: b.schema_location.get().to_owned(),
+            auxiliary_mime_types: b.auxiliary_mime_types.get().to_owned(),
+        }
+    }
+}
+
+// ===== SampleEntry: Wvtt =====
+
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
+#[derive(Clone)]
+struct Mp4SampleEntryWvtt {
+    #[pyo3(get)]
+    config: String,
+}
+
+#[pymethods]
+impl Mp4SampleEntryWvtt {
+    #[new]
+    #[pyo3(signature = (config = "WEBVTT"))]
+    fn new(config: &str) -> Self {
+        Self {
+            config: config.to_owned(),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Mp4SampleEntryWvtt(config={:?})", self.config)
+    }
+}
+
+impl Mp4SampleEntryWvtt {
+    fn to_sample_entry(&self) -> SampleEntry {
+        SampleEntry::Wvtt(WvttBox {
+            data_reference_index: WvttBox::DEFAULT_DATA_REFERENCE_INDEX,
+            vttc_box: VttCBox {
+                config: self.config.clone(),
+            },
+            unknown_boxes: Vec::new(),
+        })
+    }
+
+    fn from_box(b: &WvttBox) -> Self {
+        Self {
+            config: b.vttc_box.config.clone(),
+        }
+    }
+}
+
+// ===== SampleEntry: Tx3g =====
+
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
+#[derive(Clone)]
+struct Mp4SampleEntryTx3g {
+    #[pyo3(get)]
+    display_flags: u32,
+    #[pyo3(get)]
+    horizontal_justification: i8,
+    #[pyo3(get)]
+    vertical_justification: i8,
+    background_color_rgba: Vec<u8>,
+    default_text_box: (i16, i16, i16, i16),
+    default_style: (u16, u16, u16, u8, u8, Vec<u8>),
+    font_table: Vec<(u16, Vec<u8>)>,
+}
+
+#[pymethods]
+impl Mp4SampleEntryTx3g {
+    #[new]
+    #[pyo3(signature = (
+        display_flags = 0,
+        horizontal_justification = 0,
+        vertical_justification = 0,
+        background_color_rgba = None,
+        default_text_box = None,
+        default_style = None,
+        font_table = None,
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        display_flags: u32,
+        horizontal_justification: i8,
+        vertical_justification: i8,
+        background_color_rgba: Option<Vec<u8>>,
+        default_text_box: Option<(i16, i16, i16, i16)>,
+        default_style: Option<(u16, u16, u16, u8, u8, Vec<u8>)>,
+        font_table: Option<Vec<(u16, Vec<u8>)>>,
+    ) -> PyResult<Self> {
+        // 4 バイト固定フィールドは長さを検証する
+        let background_color_rgba = background_color_rgba.unwrap_or_default();
+        if background_color_rgba.len() != 4 {
+            return Err(PyValueError::new_err(
+                "background_color_rgba must be exactly 4 bytes",
+            ));
+        }
+        // 既定のスタイル (3GPP TS 26.245 の StyleRecord) の 6 番目はテキスト色 RGBA 4 バイト
+        let default_style = default_style.unwrap_or((0, 0, 0, 0, 0, vec![0, 0, 0, 0]));
+        if default_style.5.len() != 4 {
+            return Err(PyValueError::new_err(
+                "default_style text_color_rgba must be exactly 4 bytes",
+            ));
+        }
+        Ok(Self {
+            display_flags,
+            horizontal_justification,
+            vertical_justification,
+            background_color_rgba,
+            default_text_box: default_text_box.unwrap_or((0, 0, 0, 0)),
+            default_style,
+            font_table: font_table.unwrap_or_default(),
+        })
+    }
+
+    #[getter]
+    fn background_color_rgba(&self, py: Python<'_>) -> Py<PyBytes> {
+        PyBytes::new(py, &self.background_color_rgba).unbind()
+    }
+
+    #[getter]
+    fn default_text_box(&self) -> (i16, i16, i16, i16) {
+        self.default_text_box
+    }
+
+    #[getter]
+    fn default_style(&self, py: Python<'_>) -> (u16, u16, u16, u8, u8, Py<PyBytes>) {
+        (
+            self.default_style.0,
+            self.default_style.1,
+            self.default_style.2,
+            self.default_style.3,
+            self.default_style.4,
+            PyBytes::new(py, &self.default_style.5).unbind(),
+        )
+    }
+
+    #[getter]
+    fn font_table(&self, py: Python<'_>) -> Vec<(u16, Py<PyBytes>)> {
+        self.font_table
+            .iter()
+            .map(|(font_id, font_name)| (*font_id, PyBytes::new(py, font_name).unbind()))
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Mp4SampleEntryTx3g(display_flags={}, font_table_size={})",
+            self.display_flags,
+            self.font_table.len()
+        )
+    }
+}
+
+impl Mp4SampleEntryTx3g {
+    fn to_sample_entry(&self) -> SampleEntry {
+        // 4 バイト検証は new で実施済み。frozen でフィールドは不変のため
+        // ここでは expect で安全に [u8; 4] へ変換できる
+        let background_color_rgba: [u8; 4] = self
+            .background_color_rgba
+            .clone()
+            .try_into()
+            .expect("background_color_rgba is 4 bytes (validated in new)");
+        let text_color_rgba: [u8; 4] = self
+            .default_style
+            .5
+            .clone()
+            .try_into()
+            .expect("text_color_rgba is 4 bytes (validated in new)");
+        let entries = self
+            .font_table
+            .iter()
+            .map(|(font_id, font_name)| FontRecord {
+                font_id: *font_id,
+                font_name: font_name.clone(),
+            })
+            .collect();
+        SampleEntry::Tx3g(Tx3gBox {
+            data_reference_index: Tx3gBox::DEFAULT_DATA_REFERENCE_INDEX,
+            display_flags: self.display_flags,
+            horizontal_justification: self.horizontal_justification,
+            vertical_justification: self.vertical_justification,
+            background_color_rgba,
+            default_text_box: BoxRecord {
+                top: self.default_text_box.0,
+                left: self.default_text_box.1,
+                bottom: self.default_text_box.2,
+                right: self.default_text_box.3,
+            },
+            default_style: StyleRecord {
+                start_char: self.default_style.0,
+                end_char: self.default_style.1,
+                font_id: self.default_style.2,
+                face_style_flags: self.default_style.3,
+                font_size: self.default_style.4,
+                text_color_rgba,
+            },
+            ftab_box: FtabBox { entries },
+            unknown_boxes: Vec::new(),
+        })
+    }
+
+    fn from_box(b: &Tx3gBox) -> Self {
+        Self {
+            display_flags: b.display_flags,
+            horizontal_justification: b.horizontal_justification,
+            vertical_justification: b.vertical_justification,
+            background_color_rgba: b.background_color_rgba.to_vec(),
+            default_text_box: (
+                b.default_text_box.top,
+                b.default_text_box.left,
+                b.default_text_box.bottom,
+                b.default_text_box.right,
+            ),
+            default_style: (
+                b.default_style.start_char,
+                b.default_style.end_char,
+                b.default_style.font_id,
+                b.default_style.face_style_flags,
+                b.default_style.font_size,
+                b.default_style.text_color_rgba.to_vec(),
+            ),
+            font_table: b
+                .ftab_box
+                .entries
+                .iter()
+                .map(|entry| (entry.font_id, entry.font_name.clone()))
+                .collect(),
+        }
+    }
+}
+
 // ===== SampleEntry Union の Python ↔ Rust dispatch =====
 
 // タグ付き Union を FromPyObject / IntoPyObject 双方に derive させることで、
@@ -1151,6 +1448,9 @@ enum Mp4SampleEntryAny {
     Opus(Py<Mp4SampleEntryOpus>),
     Mp4a(Py<Mp4SampleEntryMp4a>),
     Flac(Py<Mp4SampleEntryFlac>),
+    Stpp(Py<Mp4SampleEntryStpp>),
+    Wvtt(Py<Mp4SampleEntryWvtt>),
+    Tx3g(Py<Mp4SampleEntryTx3g>),
 }
 
 impl Mp4SampleEntryAny {
@@ -1165,6 +1465,9 @@ impl Mp4SampleEntryAny {
             Self::Opus(p) => Self::Opus(p.clone_ref(py)),
             Self::Mp4a(p) => Self::Mp4a(p.clone_ref(py)),
             Self::Flac(p) => Self::Flac(p.clone_ref(py)),
+            Self::Stpp(p) => Self::Stpp(p.clone_ref(py)),
+            Self::Wvtt(p) => Self::Wvtt(p.clone_ref(py)),
+            Self::Tx3g(p) => Self::Tx3g(p.clone_ref(py)),
         }
     }
 
@@ -1179,6 +1482,9 @@ impl Mp4SampleEntryAny {
             Self::Opus(p) => p.get().to_sample_entry(),
             Self::Mp4a(p) => p.get().to_sample_entry(),
             Self::Flac(p) => p.get().to_sample_entry(),
+            Self::Stpp(p) => p.get().to_sample_entry(),
+            Self::Wvtt(p) => p.get().to_sample_entry(),
+            Self::Tx3g(p) => p.get().to_sample_entry(),
         }
     }
 }
@@ -1214,6 +1520,15 @@ fn sample_entry_from_core(
         }
         SampleEntry::Flac(b) => {
             Mp4SampleEntryAny::Flac(Py::new(py, Mp4SampleEntryFlac::from_box(b))?)
+        }
+        SampleEntry::Stpp(b) => {
+            Mp4SampleEntryAny::Stpp(Py::new(py, Mp4SampleEntryStpp::from_box(b))?)
+        }
+        SampleEntry::Wvtt(b) => {
+            Mp4SampleEntryAny::Wvtt(Py::new(py, Mp4SampleEntryWvtt::from_box(b))?)
+        }
+        SampleEntry::Tx3g(b) => {
+            Mp4SampleEntryAny::Tx3g(Py::new(py, Mp4SampleEntryTx3g::from_box(b))?)
         }
         SampleEntry::Unknown(_) => return Ok(None),
     };
@@ -1498,6 +1813,53 @@ impl Mp4DemuxSample {
     }
 }
 
+// ===== Mp4TrackMetadata =====
+
+#[pyclass(module = "mp4.mp4_ext", frozen, from_py_object)]
+#[derive(Clone)]
+struct Mp4TrackMetadata {
+    #[pyo3(get)]
+    language: String,
+    #[pyo3(get)]
+    name: String,
+}
+
+#[pymethods]
+impl Mp4TrackMetadata {
+    #[new]
+    #[pyo3(signature = (language = "und", name = ""))]
+    fn new(language: &str, name: &str) -> Self {
+        Self {
+            language: language.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Mp4TrackMetadata(language={:?}, name={:?})",
+            self.language, self.name
+        )
+    }
+}
+
+impl Mp4TrackMetadata {
+    fn to_core(&self) -> PyResult<CoreTrackMetadata> {
+        // LanguageCode は各バイトが 0x60..=0x7F (小文字アルファベット 3 文字) の
+        // 範囲に収まる必要がある
+        let language = LanguageCode::from_ascii(&self.language).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "invalid language code: {:?} (expected 3 lowercase ASCII letters)",
+                self.language
+            ))
+        })?;
+        // Utf8String は null を含む文字列を拒否する
+        let name = Utf8String::new(&self.name)
+            .ok_or_else(|| PyValueError::new_err("name must not contain null characters"))?;
+        Ok(CoreTrackMetadata { language, name })
+    }
+}
+
 // ===== Mp4FileMuxerOptions =====
 
 #[pyclass(module = "mp4.mp4_ext", from_py_object)]
@@ -1505,15 +1867,34 @@ impl Mp4DemuxSample {
 struct Mp4FileMuxerOptions {
     #[pyo3(get)]
     reserved_moov_box_size: usize,
+    #[pyo3(get)]
+    audio_track: Option<Mp4TrackMetadata>,
+    #[pyo3(get)]
+    video_track: Option<Mp4TrackMetadata>,
+    #[pyo3(get)]
+    subtitle_track: Option<Mp4TrackMetadata>,
 }
 
 #[pymethods]
 impl Mp4FileMuxerOptions {
     #[new]
-    #[pyo3(signature = (reserved_moov_box_size = 0))]
-    fn new(reserved_moov_box_size: usize) -> Self {
+    #[pyo3(signature = (
+        reserved_moov_box_size = 0,
+        audio_track = None,
+        video_track = None,
+        subtitle_track = None,
+    ))]
+    fn new(
+        reserved_moov_box_size: usize,
+        audio_track: Option<Mp4TrackMetadata>,
+        video_track: Option<Mp4TrackMetadata>,
+        subtitle_track: Option<Mp4TrackMetadata>,
+    ) -> Self {
         Self {
             reserved_moov_box_size,
+            audio_track,
+            video_track,
+            subtitle_track,
         }
     }
 
@@ -1521,8 +1902,9 @@ impl Mp4FileMuxerOptions {
     // Python 側から Mp4FileMuxerOptions.estimate_maximum_moov_box_size(a, v) と
     // 呼べる API は #[classmethod] と変わらない。
     #[staticmethod]
-    fn estimate_maximum_moov_box_size(audio_sample_count: u32, video_sample_count: u32) -> usize {
-        core_estimate_moov(&[audio_sample_count as usize, video_sample_count as usize])
+    #[pyo3(signature = (*sample_counts))]
+    fn estimate_maximum_moov_box_size(sample_counts: Vec<usize>) -> usize {
+        core_estimate_moov(&sample_counts)
     }
 }
 
@@ -1589,10 +1971,28 @@ impl Mp4FileMuxer {
         };
 
         let core_options = options
-            .map(|o| CoreMuxerOptions {
-                reserved_moov_box_size: o.reserved_moov_box_size,
-                creation_timestamp: Duration::ZERO,
+            .map(|o| -> PyResult<CoreMuxerOptions> {
+                Ok(CoreMuxerOptions {
+                    reserved_moov_box_size: o.reserved_moov_box_size,
+                    creation_timestamp: Duration::ZERO,
+                    audio_track: o
+                        .audio_track
+                        .map(|t| t.to_core())
+                        .transpose()?
+                        .unwrap_or_default(),
+                    video_track: o
+                        .video_track
+                        .map(|t| t.to_core())
+                        .transpose()?
+                        .unwrap_or_default(),
+                    subtitle_track: o
+                        .subtitle_track
+                        .map(|t| t.to_core())
+                        .transpose()?
+                        .unwrap_or_default(),
+                })
             })
+            .transpose()?
             .unwrap_or_default();
         let core = CoreMuxer::with_options(core_options).map_err(map_err)?;
 
@@ -1699,6 +2099,21 @@ impl Mp4FileMuxer {
 
 // ===== Mp4FileDemuxer (on-demand loading) =====
 
+// next_sample から取得したサンプル情報を、state.core のライフタイムから切り離して
+// 持ち出すためのタプル型。フィールドの意味は以下のとおり:
+// (track_id, data_offset, data_size, keyframe, timestamp, duration,
+//  composition_time_offset, sample_entry)
+type NextSampleExtracted = (
+    u32,
+    u64,
+    u64,
+    bool,
+    u64,
+    u32,
+    Option<i64>,
+    Option<shiguredo_mp4::boxes::SampleEntry>,
+);
+
 struct DemuxerState {
     core: CoreDemuxer,
     closed: bool,
@@ -1741,12 +2156,12 @@ impl Mp4FileDemuxer {
                     "Required input position too large (corrupted data?): {position}"
                 )));
             }
-            if let Some(n) = size {
-                if n as u64 > i64::MAX as u64 {
-                    return Err(map_err(format!(
-                        "Required input size too large (corrupted data?): {n}"
-                    )));
-                }
+            if let Some(n) = size
+                && n as u64 > i64::MAX as u64
+            {
+                return Err(map_err(format!(
+                    "Required input size too large (corrupted data?): {n}"
+                )));
             }
             // seek + read の間に別スレッドが入って位置を移動させないよう、
             // 1 回の読み込みは必ず stream_lock のロック内で完結させる。
@@ -1883,16 +2298,7 @@ impl Mp4FileDemuxer {
         loop {
             // sample のライフタイムを state.core と切り離すため、Ok(Some(_)) 内で
             // 必要な情報をすべてコピー・クローンしてから外の処理に移る。
-            let extracted: Option<(
-                u32,
-                u64,
-                u64,
-                bool,
-                u64,
-                u32,
-                Option<i64>,
-                Option<shiguredo_mp4::boxes::SampleEntry>,
-            )> = match state.core.next_sample() {
+            let extracted: Option<NextSampleExtracted> = match state.core.next_sample() {
                 Ok(Some(sample)) => {
                     if sample.data_size as u64 > MAX_SAMPLE_SIZE {
                         return Err(map_err(format!(
@@ -2018,7 +2424,8 @@ mod mp4_ext {
     use super::{
         Mp4DemuxSample, Mp4FileDemuxer, Mp4FileMuxer, Mp4FileMuxerOptions, Mp4MuxSample,
         Mp4SampleEntryAv01, Mp4SampleEntryAvc1, Mp4SampleEntryFlac, Mp4SampleEntryHev1,
-        Mp4SampleEntryHvc1, Mp4SampleEntryMp4a, Mp4SampleEntryOpus, Mp4SampleEntryVp08,
-        Mp4SampleEntryVp09, Mp4TrackInfo, estimate_maximum_moov_box_size, library_version,
+        Mp4SampleEntryHvc1, Mp4SampleEntryMp4a, Mp4SampleEntryOpus, Mp4SampleEntryStpp,
+        Mp4SampleEntryTx3g, Mp4SampleEntryVp08, Mp4SampleEntryVp09, Mp4SampleEntryWvtt,
+        Mp4TrackInfo, Mp4TrackMetadata, estimate_maximum_moov_box_size, library_version,
     };
 }

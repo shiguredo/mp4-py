@@ -21,16 +21,19 @@ from mp4 import (
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryFlac,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryWvtt,
+    Mp4SampleEntryTx3g,
 )
 
 from conftest import (
     st_video_sample_entry,
     st_audio_sample_entry,
+    st_subtitle_sample_entry,
     st_vp08_sample_entry,
     st_sample_data,
     st_timescale,
     st_duration,
-    st_keyframe,
 )
 
 
@@ -39,7 +42,6 @@ from conftest import (
     sample_data=st_sample_data,
     timescale=st_timescale,
     duration=st_duration,
-    keyframe=st_keyframe,
 )
 @settings(max_examples=100)
 def prop_video_mux_demux_roundtrip(
@@ -54,9 +56,12 @@ def prop_video_mux_demux_roundtrip(
     sample_data: bytes,
     timescale: int,
     duration: int,
-    keyframe: bool,
 ) -> None:
     """ビデオサンプルの Mux → Demux ラウンドトリップでデータが保持される"""
+    # mp4-rs 2026.4.0 以降、映像トラックは少なくとも 1 サンプルが同期サンプル
+    # (keyframe=True) でないと finalize が失敗するため、単一サンプルの
+    # ラウンドトリップでは keyframe=True に固定する。
+    keyframe = True
     output_buffer = io.BytesIO()
     muxer = Mp4FileMuxer(output_buffer)
 
@@ -154,7 +159,8 @@ def prop_multiple_samples_roundtrip(
     for i in range(sample_count):
         # 各サンプルにインデックスを埋め込む
         sample_data = bytes([i % 256]) + base_data
-        is_keyframe = i % 5 == 0
+        # 映像トラックには必ず 1 つ以上の同期サンプルが必要なため先頭をキーフレームにする
+        is_keyframe = i == 0
 
         original_samples.append(
             {
@@ -232,3 +238,46 @@ def prop_faststart_roundtrip(
 
     for demuxed in demuxed_samples:
         assert demuxed.data == sample_data
+
+
+@given(
+    sample_entry=st_subtitle_sample_entry,
+    sample_data=st_sample_data,
+    timescale=st_timescale,
+    duration=st_duration,
+)
+@settings(max_examples=100)
+def prop_subtitle_mux_demux_roundtrip(
+    sample_entry: Mp4SampleEntryStpp | Mp4SampleEntryWvtt | Mp4SampleEntryTx3g,
+    sample_data: bytes,
+    timescale: int,
+    duration: int,
+) -> None:
+    """字幕サンプルの Mux → Demux ラウンドトリップでデータが保持される"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=timescale,
+        duration=duration,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    demux_sample = next(demuxer)
+
+    # サンプルデータが一致する
+    assert demux_sample.data == sample_data
+    # トラック種別が一致する
+    assert demux_sample.track.kind == "subtitle"
+    # duration が一致する
+    assert demux_sample.duration == duration
+    # timescale が一致する
+    assert demux_sample.track.timescale == timescale

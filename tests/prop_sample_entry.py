@@ -19,6 +19,9 @@ from mp4 import (
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryFlac,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryWvtt,
+    Mp4SampleEntryTx3g,
 )
 
 from conftest import (
@@ -31,6 +34,9 @@ from conftest import (
     st_opus_sample_entry,
     st_mp4a_sample_entry,
     st_flac_sample_entry,
+    st_stpp_sample_entry,
+    st_wvtt_sample_entry,
+    st_tx3g_sample_entry,
     st_sample_data,
 )
 
@@ -325,3 +331,95 @@ def prop_flac_fields_preserved(sample_entry: Mp4SampleEntryFlac, sample_data: by
     assert restored.channel_count == sample_entry.channel_count
     assert restored.sample_rate == sample_entry.sample_rate
     assert restored.streaminfo_data == sample_entry.streaminfo_data
+
+
+@given(sample_entry=st_stpp_sample_entry(), sample_data=st_sample_data)
+@settings(max_examples=100)
+def prop_stpp_fields_preserved(sample_entry: Mp4SampleEntryStpp, sample_data: bytes) -> None:
+    """STPP サンプルエントリーのフィールドが保持される"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demux_sample = next(demuxer)
+
+    restored = demux_sample.sample_entry
+    assert isinstance(restored, Mp4SampleEntryStpp)
+
+    assert restored.namespace == sample_entry.namespace
+    assert restored.schema_location == sample_entry.schema_location
+    assert restored.auxiliary_mime_types == sample_entry.auxiliary_mime_types
+
+
+@given(sample_entry=st_wvtt_sample_entry(), sample_data=st_sample_data)
+@settings(max_examples=100)
+def prop_wvtt_fields_preserved(sample_entry: Mp4SampleEntryWvtt, sample_data: bytes) -> None:
+    """WVTT サンプルエントリーのフィールドが保持される"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demux_sample = next(demuxer)
+
+    restored = demux_sample.sample_entry
+    assert isinstance(restored, Mp4SampleEntryWvtt)
+
+    assert restored.config == sample_entry.config
+
+
+@given(sample_entry=st_tx3g_sample_entry(), sample_data=st_sample_data)
+@settings(max_examples=100)
+def prop_tx3g_fields_preserved(sample_entry: Mp4SampleEntryTx3g, sample_data: bytes) -> None:
+    """TX3G サンプルエントリーのフィールドが保持される"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demux_sample = next(demuxer)
+
+    restored = demux_sample.sample_entry
+    assert isinstance(restored, Mp4SampleEntryTx3g)
+
+    assert restored.display_flags == sample_entry.display_flags
+    assert restored.horizontal_justification == sample_entry.horizontal_justification
+    assert restored.vertical_justification == sample_entry.vertical_justification
+    assert restored.background_color_rgba == sample_entry.background_color_rgba
+    assert restored.default_text_box == sample_entry.default_text_box
+    assert restored.default_style == sample_entry.default_style
+    assert restored.font_table == sample_entry.font_table

@@ -45,9 +45,10 @@ uv add mp4-py
 ## 使い方（基本 API）
 
 - `Mp4FileDemuxer` / `Mp4FileMuxer`
-- ビデオ/オーディオトラックの読み書きをサポート
+- ビデオ/オーディオ/字幕トラックの読み書きをサポート
 - Opus / AAC / FLAC 音声コーデック対応
 - VP8 / VP9 / AV1 / H.264 / H.265 映像コーデック対応
+- STPP (XML 字幕) / WVTT (WebVTT 字幕) / TX3G (3GPP タイムドテキスト) 対応
 - Python [Free Threading](https://docs.python.org/3/howto/free-threading-python.html) 対応
 
 ### MP4 ファイルの読み込み
@@ -125,7 +126,7 @@ from mp4 import Mp4FileDemuxer
 with Mp4FileDemuxer("input.mp4") as demuxer:
     for track in demuxer.tracks:
         print(f"Track ID: {track.track_id}")
-        print(f"Kind: {track.kind}")  # 'video' または 'audio'
+        print(f"Kind: {track.kind}")  # 'video' / 'audio' / 'subtitle'
         print(f"Duration: {track.duration_seconds:.2f}s")
 ```
 

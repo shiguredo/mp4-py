@@ -16,9 +16,13 @@ from .mp4_ext import (
     Mp4SampleEntryHvc1,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryOpus,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryTx3g,
     Mp4SampleEntryVp08,
     Mp4SampleEntryVp09,
+    Mp4SampleEntryWvtt,
     Mp4TrackInfo,
+    Mp4TrackMetadata,
     estimate_maximum_moov_box_size,
     library_version,
 )
@@ -26,7 +30,7 @@ from .mp4_ext import (
 __version__ = version("mp4-py")
 
 # 型定義
-Mp4TrackKind = Literal["audio", "video"]
+Mp4TrackKind = Literal["audio", "video", "subtitle"]
 """MP4 ファイル内のトラックの種類を表す型"""
 
 Mp4SampleEntry = Union[
@@ -39,6 +43,9 @@ Mp4SampleEntry = Union[
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryFlac,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryWvtt,
+    Mp4SampleEntryTx3g,
 ]
 """MP4 サンプルエントリー"""
 
@@ -54,6 +61,7 @@ __all__ = [
     "estimate_maximum_moov_box_size",
     "Mp4TrackKind",
     "Mp4TrackInfo",
+    "Mp4TrackMetadata",
     "Mp4SampleEntryAvc1",
     "Mp4SampleEntryHev1",
     "Mp4SampleEntryHvc1",
@@ -63,6 +71,9 @@ __all__ = [
     "Mp4SampleEntryOpus",
     "Mp4SampleEntryMp4a",
     "Mp4SampleEntryFlac",
+    "Mp4SampleEntryStpp",
+    "Mp4SampleEntryWvtt",
+    "Mp4SampleEntryTx3g",
     "Mp4SampleEntry",
     "Mp4DemuxSample",
     "Mp4MuxSample",

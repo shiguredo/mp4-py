@@ -14,6 +14,9 @@ from mp4 import (
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryFlac,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryWvtt,
+    Mp4SampleEntryTx3g,
 )
 
 
@@ -199,6 +202,61 @@ def st_flac_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryFlac:
 
 
 # ============================================================================
+# 字幕サンプルエントリーのストラテジー
+# ============================================================================
+
+
+@st.composite
+def st_stpp_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryStpp:
+    return Mp4SampleEntryStpp(
+        namespace=draw(st.sampled_from(["http://www.w3.org/ns/ttml", "urn:example:subtitle"])),
+        schema_location=draw(st.sampled_from(["", "http://www.w3.org/ns/ttml#profile"])),
+        auxiliary_mime_types=draw(st.sampled_from(["", "application/ttml+xml"])),
+    )
+
+
+@st.composite
+def st_wvtt_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryWvtt:
+    return Mp4SampleEntryWvtt(
+        config=draw(st.sampled_from(["WEBVTT", "WEBVTT\n", "WEBVTT\nKind: captions\n"])),
+    )
+
+
+@st.composite
+def st_tx3g_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryTx3g:
+    return Mp4SampleEntryTx3g(
+        display_flags=draw(st.integers(min_value=0, max_value=0xFFFFFFFF)),
+        horizontal_justification=draw(st.integers(min_value=-1, max_value=1)),
+        vertical_justification=draw(st.integers(min_value=-1, max_value=1)),
+        background_color_rgba=draw(st.binary(min_size=4, max_size=4)),
+        default_text_box=(
+            draw(st.integers(min_value=-1000, max_value=1000)),
+            draw(st.integers(min_value=-1000, max_value=1000)),
+            draw(st.integers(min_value=-1000, max_value=1000)),
+            draw(st.integers(min_value=-1000, max_value=1000)),
+        ),
+        default_style=(
+            draw(st.integers(min_value=0, max_value=65535)),
+            draw(st.integers(min_value=0, max_value=65535)),
+            draw(st.integers(min_value=0, max_value=65535)),
+            draw(st.integers(min_value=0, max_value=255)),
+            draw(st.integers(min_value=0, max_value=255)),
+            draw(st.binary(min_size=4, max_size=4)),
+        ),
+        font_table=draw(
+            st.lists(
+                st.tuples(
+                    st.integers(min_value=0, max_value=65535),
+                    st.binary(min_size=1, max_size=32),
+                ),
+                min_size=0,
+                max_size=4,
+            )
+        ),
+    )
+
+
+# ============================================================================
 # 統合ストラテジー
 # ============================================================================
 
@@ -215,4 +273,10 @@ st_audio_sample_entry = st.one_of(
     st_opus_sample_entry(),
     st_mp4a_sample_entry(),
     st_flac_sample_entry(),
+)
+
+st_subtitle_sample_entry = st.one_of(
+    st_stpp_sample_entry(),
+    st_wvtt_sample_entry(),
+    st_tx3g_sample_entry(),
 )
