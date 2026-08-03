@@ -14,8 +14,13 @@ from mp4 import (
     Mp4SampleEntryOpus,
     Mp4SampleEntryMp4a,
     Mp4SampleEntryFlac,
+    Mp4SampleEntryStpp,
+    Mp4SampleEntryWvtt,
+    Mp4SampleEntryTx3g,
     Mp4TrackInfo,
+    Mp4TrackMetadata,
     Mp4DemuxSample,
+    estimate_maximum_moov_box_size,
 )
 
 # テスト用定数
@@ -764,3 +769,234 @@ def test_demuxer_with_empty_data():
     # 空のファイルの場合、空のリストになる（ブロックしないこと）
     samples = list(demuxer)
     assert samples == []
+
+
+def test_subtitle_sample_entry_stpp():
+    """STPP (XML 字幕) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    sample_entry = Mp4SampleEntryStpp(
+        namespace="http://www.w3.org/ns/ttml",
+        schema_location="http://www.w3.org/ns/ttml#profile",
+        auxiliary_mime_types="application/ttml+xml",
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "subtitle"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryStpp)
+    assert demux_sample.sample_entry.namespace == "http://www.w3.org/ns/ttml"
+    assert demux_sample.sample_entry.schema_location == "http://www.w3.org/ns/ttml#profile"
+    assert demux_sample.sample_entry.auxiliary_mime_types == "application/ttml+xml"
+    assert demux_sample.data == sample_data
+
+
+def test_subtitle_sample_entry_wvtt():
+    """WVTT (WebVTT 字幕) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    sample_entry = Mp4SampleEntryWvtt(config="WEBVTT\n")
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "subtitle"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryWvtt)
+    assert demux_sample.sample_entry.config == "WEBVTT\n"
+    assert demux_sample.data == sample_data
+
+
+def test_subtitle_sample_entry_tx3g():
+    """TX3G (3GPP タイムドテキスト) サンプルエントリーのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    sample_entry = Mp4SampleEntryTx3g(
+        display_flags=0,
+        background_color_rgba=b"\x00\x00\x00\x00",
+        default_text_box=(0, 0, 100, 100),
+        default_style=(0, 10, 1, 0, 12, b"\xff\xff\xff\xff"),
+        font_table=[(1, b"Serif")],
+    )
+
+    mux_sample = Mp4MuxSample(
+        track_kind="subtitle",
+        sample_entry=sample_entry,
+        keyframe=True,
+        timescale=1000,
+        duration=100,
+        data=sample_data,
+    )
+    muxer.append_sample(mux_sample)
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "subtitle"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryTx3g)
+    assert demux_sample.sample_entry.display_flags == 0
+    assert demux_sample.sample_entry.background_color_rgba == b"\x00\x00\x00\x00"
+    assert demux_sample.sample_entry.default_text_box == (0, 0, 100, 100)
+    assert demux_sample.sample_entry.default_style == (0, 10, 1, 0, 12, b"\xff\xff\xff\xff")
+    assert demux_sample.sample_entry.font_table == [(1, b"Serif")]
+    assert demux_sample.data == sample_data
+
+
+def test_track_metadata():
+    """トラックメタデータ (言語・名前) のテスト"""
+    options = Mp4FileMuxerOptions(
+        audio_track=Mp4TrackMetadata(language="eng", name="English Audio"),
+        video_track=Mp4TrackMetadata(language="und", name="Video"),
+        subtitle_track=Mp4TrackMetadata(language="jpn", name="日本語字幕"),
+    )
+
+    assert options.audio_track.language == "eng"
+    assert options.audio_track.name == "English Audio"
+    assert options.video_track.language == "und"
+    assert options.video_track.name == "Video"
+    assert options.subtitle_track.language == "jpn"
+    assert options.subtitle_track.name == "日本語字幕"
+
+    # オプション付きで muxer が生成できること
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer, options=options)
+    muxer.finalize()
+    assert len(output_buffer.getvalue()) > 0
+
+
+def test_track_metadata_default():
+    """トラックメタデータのデフォルト値のテスト"""
+    metadata = Mp4TrackMetadata()
+    assert metadata.language == "und"
+    assert metadata.name == ""
+
+
+def test_track_metadata_invalid_language():
+    """不正な言語コードは muxer 生成時にエラーになる"""
+    options = Mp4FileMuxerOptions(
+        audio_track=Mp4TrackMetadata(language="JPN", name="Invalid"),
+    )
+
+    try:
+        Mp4FileMuxer(io.BytesIO(), options=options)
+        assert False, "不正な言語コードがエラーにならない"
+    except ValueError as error:
+        assert "invalid language code" in str(error)
+
+
+def test_estimate_maximum_moov_box_size_variadic():
+    """estimate_maximum_moov_box_size の可変長引数対応のテスト"""
+    # 従来どおり 2 引数呼び出しが動作する
+    size_2tracks = estimate_maximum_moov_box_size(0, 5)
+    assert size_2tracks > 0
+
+    # 3 トラック (音声・映像・字幕) 指定は 2 トラックより大きくなる
+    size_3tracks = estimate_maximum_moov_box_size(100, 100, 100)
+    assert size_3tracks > size_2tracks
+
+    # 静的メソッドでも同じシグネチャ
+    size_static = Mp4FileMuxerOptions.estimate_maximum_moov_box_size(100, 100, 100)
+    assert size_static == size_3tracks
+
+
+def test_subtitle_mux_demux_mixed_roundtrip():
+    """映像・音声・字幕の 3 トラック混在ラウンドトリップのテスト"""
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    # 映像トラック
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="video",
+            sample_entry=Mp4SampleEntryVp08(width=1920, height=1080),
+            keyframe=True,
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(0),
+        )
+    )
+    # 音声トラック
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="audio",
+            sample_entry=Mp4SampleEntryMp4a(
+                channel_count=2,
+                sample_rate=48000,
+                dec_specific_info=b"\x11\x90",
+            ),
+            keyframe=True,
+            timescale=48000,
+            duration=1024,
+            data=create_dummy_sample(1, size=256),
+        )
+    )
+    # 字幕トラック
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="subtitle",
+            sample_entry=Mp4SampleEntryStpp(namespace="http://www.w3.org/ns/ttml"),
+            keyframe=True,
+            timescale=1000,
+            duration=100,
+            data=create_dummy_sample(2, size=256),
+        )
+    )
+    muxer.finalize()
+
+    # デマルチプレックス処理で確認
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 3
+    kinds = [track.kind for track in tracks]
+    assert "video" in kinds
+    assert "audio" in kinds
+    assert "subtitle" in kinds
+
+    demuxed_samples = list(demuxer)
+    assert len(demuxed_samples) == 3

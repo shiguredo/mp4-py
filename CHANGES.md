@@ -20,6 +20,9 @@
 - [CHANGE] `Mp4FileMuxerOptions.reserved_moov_box_size` を `uint32` で受け取るようにする
   - mp4-rust 2026.2.0 の C API 型変更 (`u64` → `u32`) に追従する
   - @voluntas
+- [CHANGE] `estimate_maximum_moov_box_size` を任意トラック数対応にする
+  - 可変長引数 `estimate_maximum_moov_box_size(*sample_counts)` に変更する
+  - @voluntas
 - [ADD] abi3 wheel (Python 3.12 以降共通) を追加する
   - 1 wheel で 3.12 / 3.13 / 3.14 の GIL 有効ビルドすべてに対応する
   - @voluntas
@@ -32,7 +35,13 @@
 - [ADD] `Mp4MuxSample` に `composition_time_offset` 引数とプロパティを追加する
   - 指定した場合は `ctts` ボックスを生成する
   - @voluntas
-- [UPDATE] mp4-rust を 2026.3.0 に上げる
+- [ADD] `Mp4TrackMetadata` を追加する
+  - `Mp4FileMuxerOptions` の `audio_track` / `video_track` / `subtitle_track` に言語 (`mdhd.language`) とトラック名 (`hdlr.name`) を指定できる
+  - @voluntas
+- [ADD] `Mp4SampleEntryStpp` / `Mp4SampleEntryWvtt` / `Mp4SampleEntryTx3g` を追加する
+  - 字幕トラック (`track_kind="subtitle"`) の mux / demux に対応する
+  - @voluntas
+- [UPDATE] mp4-rust を 2026.4.0 に上げる
   - @voluntas
 
 ### misc
