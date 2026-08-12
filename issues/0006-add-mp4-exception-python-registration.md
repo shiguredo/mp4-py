@@ -5,62 +5,62 @@
 - Completed: {YYYY-MM-DD}
 - Model: Opus 4.7
 - Branch: feature/add-mp4-exception-python-registration
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-12
 
 ## 目的
 
-C++ 側で定義している `Mp4Exception` を `nb::exception<Mp4Exception>` で nanobind 経由 Python に公開し、`try: ... except mp4.Mp4Exception:` の形でユーザーアプリが例外を分類できるようにする。
+破損 MP4 データの検出エラーを Python 側で `mp4.Mp4Exception` として型分類できるようにする。`try: ... except mp4.Mp4Exception:` の形でユーザーアプリが破損データ由来のエラーを捕捉し、その他のエラー (内部状態エラー・入力バリデーション) と区別できるようにする。
 
 ## 優先度根拠
 
 High。
 
-- 現在 `Mp4Exception` は `std::runtime_error` を派生させただけで、`nb::exception<>` 登録がないため Python 側では通常の `RuntimeError` として飛ぶ。
-- 一方で C++ ラッパー内では `std::invalid_argument` (Python 側 `ValueError`) と `Mp4Exception` (Python 側 `RuntimeError`) を意図的に使い分けているのに、Python ユーザーは両者を型で区別できない。
-- 破損 MP4 の検出 (`Mp4Exception`) と、内部バグ (`MP4_ERROR_NULL_POINTER` → `std::invalid_argument`) をアプリで分類したい要求は自然に発生する。
-- 修正コストは小さく (NB_MODULE 冒頭に 1 行追加 + Python 側 re-export)、影響範囲がラッパーに閉じる。
+- 現状は `src/lib.rs` の `map_err` が shiguredo_mp4 の全エラーを一律 `PyRuntimeError` (`mp4 error: {e}`) に変換しており、破損 MP4 の検出 (`Sample data size too large (corrupted data?)` 等) と内部状態エラー (`muxer/demuxer is closed`、`poisoned_err`) を型で区別できない。
+- PyO3 移行前 (nanobind 時代) は C++ 側の `Mp4Exception` を登録する想定だったが、PyO3 完全移行で C++ 実装は消滅し、Python 公開例外は未実装のまま残っている。
+- 破損 MP4 の検出と内部バグをアプリで分類したい要求は自然に発生する (破損データの報告と、ライブラリ側の問題の報告を分けたい)。
+- 修正コストは小〜中程度 (`create_exception!` による例外定義 + `map_err` の変換分岐 + Python 側 re-export)。
 
 ## 現状
 
-`src/mp4_ext.cpp:31-34` で `Mp4Exception` を定義。
+`src/lib.rs` の `map_err` 関数が shiguredo_mp4 の全エラーを `PyRuntimeError` に変換する。カスタム例外は定義されておらず (`create_exception!` は 0 件)、Python 側 (`python/mp4/__init__.py`) にも `Mp4Exception` は含まれない。
 
-```cpp
-class Mp4Exception : public std::runtime_error {
- public:
-  explicit Mp4Exception(const std::string& msg) : std::runtime_error(msg) {}
-};
-```
+破損データ検出に関わるエラーメッセージは以下 (src/lib.rs で実在確認済み):
 
-しかし、`NB_MODULE(mp4_ext, m)` (`src/mp4_ext.cpp:1566-2188`) の中に `nb::exception<Mp4Exception>(m, "Mp4Exception")` の登録がない (grep で 0 件確認)。したがって Python 側では:
+- `Sample data size too large (corrupted data?): ...` (`sample.data` getter / `__next__` の MAX_SAMPLE_SIZE ガード)
+- `feed_required_input: too many iterations (possible infinite loop on corrupted data)` (feed ループ上限)
+- `Required input position too large (corrupted data?): ...` / `Required input size too large (corrupted data?): ...`
+- `Failed to read sample data: expected X bytes, got Y` (`sample.data` getter の読み込みサイズ不一致。破損 MP4 のサンプルサイズが実ファイルサイズを超える場合に発生し、0017 のホワイトリストでも破損データ由来と認定済み)
 
-- `Mp4Exception` → nanobind の既定 exception translator により `RuntimeError` に写像
-- `std::invalid_argument` → `ValueError` に写像 (nb_error.h の builtin_exception 定義による)
-
-派生させている意義が失われている。加えて `src/mp4/__init__.py` の `__all__` にも `Mp4Exception` は含まれていない。
+なお、demux のパースエラー (`DemuxError::DecodeError` / `SampleTableError`) は `src/lib.rs` の `__next__` で `PyStopIteration` に変換され Python 側に例外として届かない。この握りつぶしの解消は本 issue のスコープ外 (Rust 側の `__next__` 実装の変更が必要) であり、本 issue では「Python 側に例外として届く破損データ検出エラー」の型分類に限定する。
 
 ## 設計方針
 
-- `NB_MODULE` 冒頭で `nb::exception<Mp4Exception>(m, "Mp4Exception")` を登録する
-- 登録後、Python 側では `mp4.mp4_ext.Mp4Exception` として自動的に利用可能になる
-- `src/mp4/__init__.py` で `from .mp4_ext import Mp4Exception` を追加、`__all__` にも追加する
-- 基底クラスは `Exception` (nanobind 既定) で問題ない。`RuntimeError` にサブクラス化したい場合は `nb::exception<Mp4Exception>(m, "Mp4Exception", PyExc_RuntimeError)` の形で指定する (後方互換性を維持するために PyExc_RuntimeError 派生を推奨)
+- `pyo3::create_exception!` で `Mp4Exception` を定義し、基底を `PyRuntimeError` にする (既存の `except RuntimeError:` との後方互換性を維持するため必須)
+- 例外定義は `#[pymodule]` inline module 内で `#[pymodule_export]` に追加し、`mp4.mp4_ext.Mp4Exception` として公開する (CODEBASE.md の inline module 形式に従う)
+- `python/mp4/__init__.py` の import と `__all__` に `Mp4Exception` を追加し、`mp4.Mp4Exception` でアクセスできるようにする
+- `map_err` を変更し、破損データ検出エラー (上記 4 種のメッセージを返す経路) だけを `Mp4Exception` に変換する。それ以外のライブラリエラーは従来どおり `PyRuntimeError` のまま
+  - 変換はメッセージ文字列一致ではなく、呼び出し箇所ごとに `Mp4Exception::new_err` へ直接振り分ける方式とする (メッセージ一致は将来のエラーメッセージ追加で誤分類しやすいため)
+  - 変換対象は破損データ検出の 6 呼び出し箇所: `sample.data` getter の MAX_SAMPLE_SIZE ガードと読み込みサイズ不一致、`feed_required_input` のループ上限と Required input position/size、`__next__` の MAX_SAMPLE_SIZE ガード
 
 ## 完了条件
 
 - Python から `import mp4; mp4.Mp4Exception` でクラスにアクセスできる
-- `except mp4.Mp4Exception:` で `Mp4Exception` が投げられた C++ 例外を捕捉できる
-- 既存の `except RuntimeError:` も引き続き機能する (`PyExc_RuntimeError` 派生にした場合)
-- 追加テスト: `test_mp4.py` に「破損 MP4 で `Mp4Exception` が発火し、`isinstance(e, RuntimeError)` も真」を確認するテストを追加
-- CHANGES.md の `## develop` に「[ADD] `Mp4Exception` を Python 側で捕捉可能にする」を追記
+- `except mp4.Mp4Exception:` で破損データ検出エラーを捕捉できる
+- `Mp4Exception` は `RuntimeError` のサブクラスであり、既存の `except RuntimeError:` も引き続き機能する
+- 追加テスト: `tests/test_mp4.py` に「破損データ検出エラーが `Mp4Exception` として発火し、`isinstance(e, RuntimeError)` も真」を確認するテストを追加
+  - 発火経路の例: `Mp4DemuxSample` を `data_size=2**30+1` で直接構築して `.data` を呼ぶと MAX_SAMPLE_SIZE ガードが確実に発火する (既存の `test_demux_sample_properties` が同パターンの直接構築を行っている)。feed ループ上限・Required input 系は破損 MP4 バイト列の手作りが必要なため、まず `data_size` 超過の経路で検証し、他の経路は可能な範囲で追加する
+  - 破損データ検出の 6 呼び出し箇所 (上記設計方針の変換対象一覧) のうち、テストで検証できていない経路がある場合は、その旨を残さず可能な限りカバーする
+- 追加テスト: `Mp4Exception.__module__` が `mp4.mp4_ext` であること、pickle ラウンドトリップが動作することを確認するテストを追加 (module 名指定の誤りを検出するため)
+- 追加テスト: 破損データ以外のエラー (例: `muxer is closed`。close() 後の append_sample で発火) は `Mp4Exception` ではなく従来どおり `RuntimeError` のままであることを、`type(e) is RuntimeError` で確認するテストを追加
+- 型スタブ: pyo3-introspection 0.29 は `create_exception!` の例外を `.pyi` に含めない (実測確認済み)。実行時の動作には影響しないが、型チェッカから `mp4.Mp4Exception` を解決できない。型スタブへの反映は手書き `.pyi` の同梱が必要でビルド構成の変更を伴うため、本 issue の対象外とし別途検討する
+- CHANGES.md の `## develop` に「[ADD] `Mp4Exception` を Python 側で捕捉可能にする」を追記 (著者表記付き、shiguredo-changelog スキルの形式に従う)
 
 ## 解決方法
 
-1. `src/mp4_ext.cpp:1566-1568` あたりの `NB_MODULE(mp4_ext, m)` 冒頭に以下を追加:
-   ```cpp
-   nb::exception<Mp4Exception>(m, "Mp4Exception", PyExc_RuntimeError);
-   ```
-2. `src/mp4/__init__.py:6-29` の `from .mp4_ext import ...` に `Mp4Exception` を追加
-3. `src/mp4/__init__.py:56` の `__all__` に `"Mp4Exception"` を追加
-4. `tests/test_mp4.py` に破損 MP4 で `Mp4Exception` を捕捉するテストを追加
-5. `CHANGES.md` の `## develop` に ADD エントリを追記
-6. 既存の `std::invalid_argument` を投げている箇所 (`src/mp4_ext.cpp:917, 1531, 1537`) は本 issue の対象外だが、別途 `issues/0010-refactor-error-classification-null-and-stop-iteration.md` で扱う
+1. `src/lib.rs` に `create_exception!` で `Mp4Exception` (基底 `PyRuntimeError`) を定義する。第一引数の module 名は `mp4.mp4_ext` を指定し、`__module__` を `mp4.mp4_ext` にする (pickle と repr のため)
+2. `#[pymodule]` inline module の `#[pymodule_export]` に `Mp4Exception` を追加する
+3. 破損データ検出の 6 呼び出し箇所 (`sample.data` getter の MAX_SAMPLE_SIZE ガードと読み込みサイズ不一致、`feed_required_input` のループ上限と Required input position/size、`__next__` の MAX_SAMPLE_SIZE ガード) を `Mp4Exception::new_err` に直接振り分ける (メッセージ文字列一致ではなく呼び出し箇所ごとの変換)
+4. `python/mp4/__init__.py` の `from .mp4_ext import ...` に `Mp4Exception` を追加し、`__all__` にも追加する
+5. `tests/test_mp4.py` に破損データ検出エラーの `Mp4Exception` 捕捉テストと、破損データ以外のエラーが従来どおり `RuntimeError` のままであるテストを追加する
+6. CHANGES.md の `## develop` に ADD エントリを追記する
+7. `NO_UV_SYNC=1 uv run pytest tests/` で全テスト通過を確認する
