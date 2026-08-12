@@ -1,95 +1,61 @@
-# Free-Threading で PyMp4DemuxSample と Demuxer が共有する input_stream が未保護
+# Free-Threading で Mp4DemuxSample と Demuxer が共有する input_stream のレース (実装済み・テスト未達)
 
 - Priority: High
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
 - Model: Opus 4.7
 - Branch: feature/fix-free-threading-shared-input-stream-race
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-12
 
 ## 目的
 
-`PyMp4DemuxSample` は Demuxer が保持する `input_stream_` (Python file object) を同一オブジェクトのまま共有している。`get_data()` は `nb::lock_self()` (自オブジェクトのロック) しか取らず、Demuxer 側の `feed_required_input()` は Demuxer の `nb::ft_mutex mutex_` を取る。ロックが独立しているため、Free-Threading で複数の `PyMp4DemuxSample` の `.data` を別スレッドから並列にアクセスすると、共有ストリームに対する `seek` / `read` が race する古典的 TOCTOU となり、**別サンプルのデータを掴んで返す** 可能性がある。
+Free-Threading (Python 3.14t) で、Demuxer と `Mp4DemuxSample` が共有する input_stream (Python file object) への `seek` / `read` が race し、別サンプルのデータを返す問題の回帰テストを追加する。実装は PyO3 移行時に完了済みであり、本 issue の残作業は検証テストのみ。
 
 ## 優先度根拠
 
 High。
 
-- `CMakeLists.txt:105` で `FREE_THREADED` を宣言しており、Free-Threading ビルド (Python 3.14t 等) を正式サポート対象としている。
-- 症状はデータの静かな取り違え。サイズ一致チェック (`src/mp4_ext.cpp:732-736`) は同サイズの別サンプルなら通過してしまうため、テスト・検証で気付かない可能性が高い。
-- `test_free_threading.py:253` 等の既存テストは `next()` と `sample.data` を同一 `with lock:` 内で直列化しており、この race を全く踏まない。実運用で「demux 全サンプルを取得してから並列に .data アクセス」というごく自然なパターンで発火する。
+- mp4-py は Free-Threading ビルド (Python 3.14t) を正式サポート対象としている (CODEBASE.md の Free-Threading 節)。
+- 症状はデータの静かな取り違えで、テスト・検証で気付かない可能性が高い。
+- 実装は完了済みだが、それを保証するテストが存在しない。
 
 ## 現状
 
-### 共有ポイント
+### 実装済みの内容
 
-`src/mp4_ext.cpp:891` の Demuxer `next()` 内で、生成したサンプルに Demuxer の入力ストリームを渡している。
+PyO3 移行時 (コミット 5694230) に、issue の設計方針 A 相当の実装が `src/lib.rs` に導入済みである:
 
-```cpp
-result.input_stream_ = input_stream_;
-```
+- `Mp4FileDemuxer` が `stream_lock: Arc<Mutex<()>>` を保持
+- `__next__` で生成する `Mp4DemuxSample` に `Arc::clone(&self.stream_lock)` で同一ロックを共有
+- `Mp4DemuxSample` の `data` getter は seek + read を `stream_lock` のロック内で完結
+- `feed_required_input()` も同じ `stream_lock` を取得してから seek + read を実行
+- ロック順序は state → stream_lock で統一されており、逆順経路はない (デッドロックなし)
 
-`PyMp4DemuxSample::get_data()` (`src/mp4_ext.cpp:721-739`) は以下を実行。
+### 未達の内容
 
-```cpp
-nb::bytes get_data() {
-  if (!data_cache_) {
-    ...
-    input_stream_.attr("seek")(data_offset_);
-    nb::object read_result = input_stream_.attr("read")(data_size_);
-    data_cache_ = nb::cast<nb::bytes>(read_result);
-    ...
-  }
-  return *data_cache_;
-}
-```
+完了条件のテスト 2 件が `tests/test_free_threading.py` に存在しない:
 
-バインディングは `src/mp4_ext.cpp:2074` で `nb::lock_self()` を指定しているが、これは **自身の PyMp4DemuxSample オブジェクト** のロックであり、共有 file object や Demuxer のロックとは無関係。
+1. 「複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出して検証するテスト」
+2. 「同一 Demuxer に対して `next()` を続けているスレッドと、既に取得したサンプルの `.data` を読むスレッドを混在させるテスト」
 
-Demuxer 側の `feed_required_input()` (`src/mp4_ext.cpp:897-1009`) も同じ `input_stream_` に対して `seek` / `read` を実行するが、こちらは Demuxer の `nb::ft_mutex mutex_` (904 行) を取っている。
-
-### レース発生シナリオ
-
-1. スレッド A が `sample_a.data` を呼び、`input_stream_.attr("seek")(offset_a)` を実行
-2. スレッド B が同時に `sample_b.data` を呼び、`input_stream_.attr("seek")(offset_b)` を実行
-3. スレッド A が `input_stream_.attr("read")(size_a)` を実行 → 実際に読まれるのは offset_b からの size_a バイト
-4. `data_cache_->size() != data_size_` チェック (`src/mp4_ext.cpp:732-736`) は size_a と size_b が偶然一致すると通過し、**サンプル A のはずが offset_b のデータを返す**
-
-`io.BytesIO` は 3.14t でオブジェクト単位のロックがあるため crash は避けられるが、seek 位置の取り合いはロックでは救えない。
+既存の `test_demuxer_concurrent_iteration` (tests/test_free_threading.py) は各スレッドが next() 直後に自分のスレッドで `.data` を読む構成で、「demux 全サンプル取得後に別スレッドから並列に `.data` アクセス」という発火経路を実質的に踏みにくい。
 
 ## 設計方針
 
-以下のいずれかを採用する。両方の trade-off を検討したうえで、実装は方針 A を推奨する。
-
-### 方針 A (推奨): ストリーム専用ロックを Demuxer 側で保持し、Sample から共有参照する
-
-- Demuxer 側に `std::shared_ptr<nb::ft_mutex>` として「ストリーム排他用ロック」を持たせる
-- `PyMp4DemuxSample` に同じ `shared_ptr` を渡す
-- `get_data()` と `feed_required_input()` の seek+read シーケンスをそのロックで囲む
-- Demuxer が破棄されてもロックオブジェクトは Sample が生きている限り残るため、後片付けが安全
-
-### 方針 B: `next()` の時点でストリームから即読み込み、`input_stream_` を Sample に保持させない
-
-- 遅延読み込みを捨てて、`data_cache_` を `next()` 時点で埋める
-- API 変更は起きないが、大量サンプルを列挙するだけで全データがメモリに載る (現状の遅延読み込みの利点を失う)
-- パフォーマンス影響が大きすぎるため非推奨
+- 実装は完了済みのため、追加の設計は不要
+- テスト追加のみを実施する
 
 ## 完了条件
 
-- 複数の `PyMp4DemuxSample` の `.data` を並列に読み出しても、常に正しいサンプルデータが返る
-- Demuxer 側の `feed_required_input()` と Sample 側の `get_data()` が同一ストリームロックで直列化される
-- 追加テスト: 複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出して data hash を検証するテストを追加 (`test_free_threading.py`)
-- 追加テスト: 同一 Demuxer に対して `next()` を続けているスレッドと、既に取得したサンプルの `.data` を読むスレッドを混在させても壊れないことを検証
+- 追加テスト: 複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出してデータの一致を検証するテストを `tests/test_free_threading.py` に追加する
+  - 検証は data hash ではなく、既存テスト (`test_demuxer_concurrent_iteration`) と同じ全バイト直接比較とする (hash は衝突の懸念があるため)。期待値は `create_dummy_sample(i)` とサンプル順で対応する
+- 追加テスト: 同一 Demuxer に対して `next()` を続けているスレッドと、既に取得したサンプルの `.data` を読むスレッドを混在させても壊れないことを検証するテストを `tests/test_free_threading.py` に追加する
+  - 検証はテスト 1 と同じく、全サンプルの `.data` が期待値と全バイト一致することを確認する
+  - このテストの目的は「並行 `next()` と `.data` 読み出しのストレス下で全バイト一致する」ことの検証である。サンプル取得時点で moov の読み込みは完了しているため、`feed_required_input` との I/O 競合が発生する構造ではない点に注意する
+- 追加テストは 3.14t (Free-Threading) 環境で実行される前提とし、CODEBASE.md の pytest 規約 (60 秒以内、`--timeout=10`) 内で完走する
 
 ## 解決方法
 
-1. `PyMp4FileDemuxer` に以下を追加:
-   ```cpp
-   std::shared_ptr<nb::ft_mutex> stream_mutex_ =
-       std::make_shared<nb::ft_mutex>();
-   ```
-2. `next()` (`src/mp4_ext.cpp:853-897`) の中で `PyMp4DemuxSample` に `stream_mutex_` を渡す
-3. `PyMp4DemuxSample` に `std::shared_ptr<nb::ft_mutex> stream_mutex_;` を追加
-4. `PyMp4DemuxSample::get_data()` の seek + read を `nb::ft_lock_guard lock(*stream_mutex_);` で囲む
-5. `PyMp4FileDemuxer::feed_required_input()` の seek + read も `stream_mutex_` を取ってから実行するように変更 (Demuxer 側 `mutex_` の内側で追加ロックを取る形になる。デッドロックを避けるため順序を統一)
-6. 上記変更に合わせて、`nb::lock_self()` を `def_prop_ro("data", ...)` から外すか残すかは要検討 (残しても実害はないが、意味が曖昧になる)
+1. `tests/test_free_threading.py` に「複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出して全バイト比較するテスト」を追加する
+2. `tests/test_free_threading.py` に「同一 Demuxer の `next()` を続けるスレッドと取得済みサンプルの `.data` を読むスレッドを混在させるテスト」を追加する
+3. `NO_UV_SYNC=1 uv run pytest tests/test_free_threading.py --timeout=10` で 3.14t 環境にて全通過を確認する
