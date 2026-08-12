@@ -1,86 +1,59 @@
-# pytest --timeout=10 が pyproject.toml / conftest.py に未設定 (規約違反)
+# pytest のタイムアウトが pyproject.toml に未設定 (規約違反)
 
 - Priority: High
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
 - Model: Opus 4.7
 - Branch: feature/test-add-pytest-timeout-config
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-12
 
 ## 目的
 
-`pytest-timeout` を依存に持ちながら、pytest 実行時のタイムアウトが `pyproject.toml` / `conftest.py` に一切設定されていない状態を解消する。CODEBASE.md の pytest 規約 (`--timeout=10` 相当) に準拠させ、破損 MP4 テスト等でハングした場合のセーフティネットを確立する。
+`pytest-timeout` を依存に持ちながら、pytest 実行時のタイムアウトが `pyproject.toml` に一切設定されていない状態を解消する。CODEBASE.md の pytest 規約に準拠させ、破損 MP4 テスト等でハングした場合のセーフティネットを確立する。
+
+なお、pytest-timeout の signal 方式は Python レベルの実行中しかシグナルを処理できないため、Rust 拡張 (PyO3) 内部で GIL を保持したまま無限ループ・デッドロックした場合はタイムアウトで中断できない。その場合は CI のジョブタイムアウト (`timeout-minutes`) と手動での強制終了が最終手段となる。Windows では thread 方式が既定で、タイムアウト時にプロセス全体を強制終了するためこの限界は当てはまらない。
 
 ## 優先度根拠
 
 High。
 
-- `CODEBASE.md:34-36` に明記された規約違反:
+- CODEBASE.md の pytest 規約違反:
   - 「pytest 実行時長くても 60 秒以内にすること」
   - 「pytest のタイムアウトは pytest-timeout を利用すること」
   - 「`pytest --timeout=10` のように指定すること」
-- 実運用では `NO_UV_SYNC=1 uv run pytest` だけで実行するケースがあり、コマンドラインから timeout が渡らない。
-- `src/mp4_ext.cpp:929-963` の `feed_required_input` は無限ループ回避のため `kMaxIterations = 10000` を持つが、これを消費し切る前にテストがハングした場合の保険がない。
-- 修正コストは pyproject.toml に 1 行追加するだけ。
+- ローカル実行 (`NO_UV_SYNC=1 uv run pytest tests/`) ではコマンドラインからタイムアウトが渡らず、テストがハングした場合の保険がない
+- 修正コストは pyproject.toml への 1 行追加のみ
 
 ## 現状
 
-`pyproject.toml:32`:
-```toml
-test = ["hypothesis", "pytest", "pytest-timeout"]
-```
+`pyproject.toml` の `[dependency-groups]` の `test` グループに `pytest-timeout` は含まれている。
 
-`pytest-timeout` は依存に含まれている。
+`pyproject.toml` の `[tool.pytest.ini_options]` は `python_files` / `python_functions` / `testpaths` のみで、`timeout` の指定がない。`tests/conftest.py` も PBT strategy 定義のみで pytest フックがない。
 
-`pyproject.toml:38-42`:
-```toml
-[tool.pytest.ini_options]
-# Property-Based Testing (PBT) は prop_ prefix を使用する
-python_files = ["test_*.py", "prop_*.py"]
-python_functions = ["test_*", "prop_*"]
-testpaths = ["tests"]
-```
+`.github/workflows/wheel.yml` のテスト実行は全箇所でコマンドラインに `--timeout=30` を明示している。pytest-timeout はコマンドラインの `--timeout` が ini の `timeout` より優先されるため、本 issue の変更後も CI は 30 秒のまま変わらない。
 
-`[tool.pytest.ini_options]` に `timeout = 10` の指定なし。`tests/conftest.py` (218 行) も PBT strategy 定義のみで pytest フックがない。
-
-`.github/workflows/wheel.yml` は 3 箇所で `NO_UV_SYNC=1 uv run pytest` を実行するが、`--timeout` オプションを渡していない。
-
-`Makefile:test` は `uv run pytest tests/ --timeout=10` で `--timeout=10` を明示しているが、CI と手動実行で挙動が食い違っている。
+ローカルでの実測では全テストが 5 秒程度で完走する (91 passed / 5 skipped)。`timeout = 10` を設定しても既存テストは影響を受けない。
 
 ## 設計方針
 
 ### 既定タイムアウトを `pyproject.toml` に設定
 
-- `[tool.pytest.ini_options]` に `timeout = 10` を追加
-- コマンドラインで `--timeout=N` を渡した場合はそちらが優先される
-- 長時間 PBT (`test_fuzzing_*` は max_examples=1000) は個別に `@pytest.mark.timeout(30)` で上書き
+- `[tool.pytest.ini_options]` に `timeout = 10` を追加する
+- コマンドラインで `--timeout=N` を渡した場合はそちらが優先される。CI は `--timeout=30` を明示しているので 30 秒のまま
+- 個別のテストで 10 秒を超える場合は `@pytest.mark.timeout(N)` (N は 30 以下。CI のセーフティネットを超えない値) を付与する
+  - 実測では現状の全テストが 10 秒以内に収まっており、付与対象は現状存在しない。将来 10 秒を超えるテストが追加された場合に付与する
+  - タイムアウトで失敗したテストへのマーカー付与は、まずバグやデッドロックを疑ったうえで正当に時間のかかるテストと確認できた場合のみとする
 
 ## 完了条件
 
 - `pyproject.toml` の `[tool.pytest.ini_options]` に `timeout = 10` が追加される
-- CI 実行 (`.github/workflows/wheel.yml`) でも 10 秒タイムアウトが有効になる
-- 長時間 PBT で必要なテストには個別に `@pytest.mark.timeout(N)` (N > 10) が付く
-- Makefile の `--timeout=10` は残す (明示性のため冗長でも許容)
+- `NO_UV_SYNC=1 uv run pytest tests/` で全テストがタイムアウトせずに完走する
+- 10 秒を超えるテストがある場合は `@pytest.mark.timeout(N)` (N は 30 以下) が付与される
+- `.github/workflows/wheel.yml` の `--timeout=30` は変更しない (コマンドライン指定が優先されるため CI の挙動は変わらない)
 
 ## 解決方法
 
-1. `pyproject.toml:38-42` を以下に変更:
-   ```toml
-   [tool.pytest.ini_options]
-   # Property-Based Testing (PBT) は prop_ prefix を使用する
-   python_files = ["test_*.py", "prop_*.py"]
-   python_functions = ["test_*", "prop_*"]
-   testpaths = ["tests"]
-   timeout = 10
-   ```
-2. `tests/test_fuzzing.py` の `@settings(max_examples=1000)` が指定されているテスト (`test_fuzzing_muxer_random_data` 等) にケース単位のマーカーを付ける:
-   ```python
-   @pytest.mark.timeout(60)
-   @given(...)
-   @settings(max_examples=1000)
-   def test_fuzzing_muxer_random_data(...):
-       ...
-   ```
-3. `Makefile` の `test:` ターゲット (`uv run pytest tests/ --timeout=10`) は残す (冗長でも意図が明確)
-4. `NO_UV_SYNC=1 uv run pytest tests/` で全テストが 10 秒以内に完走することを確認
-5. `issues/0017-fix-fuzzing-tests-swallow-exceptions-and-naming.md` の対応と同時にリネームすると混乱するので、本 issue を先行させる
+1. `pyproject.toml` の `[tool.pytest.ini_options]` に `timeout = 10` を追加する
+2. `NO_UV_SYNC=1 uv run pytest tests/` で全テストがタイムアウトせずに完走することを確認する
+3. 10 秒を超えるテストが検出された場合は `@pytest.mark.timeout(N)` (N は 30 以下) を付与する
+4. 変更は `pyproject.toml` のみで完結するため、fuzzing テストの例外修正とリネーム (issues/0017-test-fuzzing-tests-swallow-exceptions-and-naming.md) は本 issue の対応後 (マージ順で本 issue が先) に実施する
