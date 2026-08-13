@@ -1558,6 +1558,13 @@ impl Mp4TrackInfo {
     fn new(track_id: u32, kind: String, duration: u64, timescale: u32) -> PyResult<Self> {
         // 妥当性チェックだけ行い、正規化はしない
         let _ = str_to_track_kind(&kind)?;
+        // timescale=0 は timestamp_seconds / duration_seconds の 0 除算で
+        // inf / nan を生むため、append_sample と同じ検証で弾く。
+        // Demuxer 経由の TrackInfo は shiguredo_mp4 の NonZeroU32 由来で
+        // 0 にならないため、到達可能な経路はこのコンストラクタのみ
+        if timescale == 0 {
+            return Err(PyValueError::new_err("timescale must be non-zero"));
+        }
         Ok(Self {
             track_id,
             kind,

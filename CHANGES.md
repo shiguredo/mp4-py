@@ -47,6 +47,9 @@
   - write 以降のエラーで seekable なストリームを巻き戻し、入力の補正後に retry できるようにする
   - 非 seekable なストリームでは使用不能の案内を例外メッセージに付加する
   - @voluntas
+- [FIX] timescale=0 の Mp4TrackInfo を ValueError で弾く
+  - timestamp_seconds / duration_seconds の 0 除算による inf / nan を構造的に排除する
+  - @voluntas
 
 ### misc
 
