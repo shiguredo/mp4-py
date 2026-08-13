@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-13
 - Model: Opus 4.7
 - Branch: feature/fix-zero-timescale-division-in-duration-methods
 - Polished: 2026-08-12
@@ -53,3 +53,14 @@ Medium。
 4. CHANGES.md の `## develop` に FIX エントリを追記する
 
 なお、README.md と examples/demux.py の `track.duration_seconds` は PyO3 移行で消滅した API を参照しており動作しない (実行時に AttributeError になる) ため、追跡 issue を完了条件に従って起票する (本 issue のスコープ外)。
+
+## 解決方法
+
+`src/lib.rs` の `Mp4TrackInfo::new` に `timescale == 0` の検証を追加した。
+
+- `timescale == 0` のとき `PyValueError` (「timescale must be non-zero」) を投げる明示的な検証を追加した。メッセージ・例外型は既存の append_sample の検証と同じ
+- これにより `Mp4DemuxSample(track=Mp4TrackInfo(timescale=0), ...)` の経路も塞がれ、`timestamp_seconds` / `duration_seconds` の 0 除算は構造的に到達不能になった (Demuxer 経由の TrackInfo は shiguredo_mp4 の NonZeroU32 由来で 0 にならない)
+- `tests/test_mp4.py` に `test_track_info_zero_timescale_raises_value_error` を追加した (既存の `test_track_info_properties` と同じ直接構築パターンで、`timescale=0` が `ValueError` になることを確認)
+- 追跡 issue を起票した: issues/0027-doc-fix-duration-seconds-references.md (README.md と examples/demux.py の消滅 API 参照の修正。`track.duration_seconds` に加え `sample._data_offset` / `sample._data_size` の壊れた参照も含む)
+- CHANGES.md の `## develop` に [FIX] エントリを追記した
+- 全テスト通過を確認済み (97 passed / 7 skipped)
