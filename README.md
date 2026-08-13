@@ -118,6 +118,15 @@ with open("output.mp4", "wb") as fp:
         pass
 ```
 
+#### append_sample が失敗した場合の挙動
+
+`append_sample()` は失敗時に、書き込んだバイトをストリームから巻き戻します。
+
+- seekable なストリームでは巻き戻しに成功するため、入力 (timescale や sample_entry など) を補正して `append_sample()` を retry できます
+- 非 seekable なストリーム (実パイプなど) や巻き戻しに失敗した場合は、Muxer が使用不能になり、以後の動作は保証されません。例外は `RuntimeError` になり、メッセージに案内と元のエラーが含まれます
+- 使用不能になった Muxer は `close()` を呼ばずに破棄してください。`close()` は finalize を実行して破損ファイルを書き出すためです
+- `with` 構文では例外発生時も `__exit__` が `close()` を実行してしまうため、非 seekable なストリームでは `with` 構文を使わず、失敗時の破棄を考慮した使用方法を取ってください
+
 ### トラック情報の取得
 
 ```python
