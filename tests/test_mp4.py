@@ -596,6 +596,22 @@ def test_track_info_properties():
     assert track.timescale == 1000000
 
 
+def test_track_info_zero_timescale_raises_value_error():
+    """timescale=0 の TrackInfo は ValueError になる
+
+    目的: timescale=0 は timestamp_seconds / duration_seconds の 0 除算で
+          inf / nan を生むため、コンストラクタで弾かれることを確認する
+    検証: Mp4TrackInfo(timescale=0) で ValueError が発火すること
+    """
+    with pytest.raises(ValueError, match="timescale must be non-zero"):
+        Mp4TrackInfo(
+            track_id=1,
+            kind="video",
+            duration=1000,
+            timescale=0,
+        )
+
+
 def test_demux_sample_properties():
     """DemuxSample のプロパティテスト"""
     track = Mp4TrackInfo(
