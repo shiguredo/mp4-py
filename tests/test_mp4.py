@@ -1,6 +1,6 @@
 import gzip
 import io
-import os
+import socket
 
 import pytest
 
@@ -1102,28 +1102,27 @@ def test_append_sample_retry_after_rollback():
 def test_append_sample_unusable_message_on_non_seekable_stream():
     """非 seekable ストリームでは使用不能メッセージが付加される
 
-    目的: 実パイプのように seek できないストリームで append_sample が失敗した
-          場合に、Muxer が使用不能になった旨の案内が例外メッセージに含まれる
-          ことを確認する
+    目的: seek できないストリーム (socket.socketpair 由来) で append_sample が
+          失敗した場合に、Muxer が使用不能になった旨の案内が例外メッセージに
+          含まれることを確認する
     検証: 例外メッセージに「破棄すること」の文言が含まれること
-    注記: POSIX では tell() が先に失敗するが、Windows のパイプでは tell() が
-          成功するため write 後のロールバックに失敗する。どちらの経路でも
-          使用不能の案内が付加される
+    注記: POSIX の実パイプも同様に tell() が失敗するが、Windows のパイプは
+          tell() が成功するため、プラットフォーム非依存の socket を使う
     """
-    read_fd, write_fd = os.pipe()
-    stream = os.fdopen(write_fd, "wb")
+    sock_a, sock_b = socket.socketpair()
+    stream = sock_a.makefile("wb")
     try:
         muxer = Mp4FileMuxer(stream)
         mux_sample = Mp4MuxSample(
             track_kind="video",
             sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
             keyframe=True,
-            # timescale=0 で必ず失敗させる (POSIX では tell() が先に失敗する)
-            timescale=0,
+            timescale=TIMESCALE,
             duration=SAMPLE_DURATION,
             data=create_dummy_sample(0),
         )
 
+        # socket は tell() が失敗するため、write 前に使用不能としてエラーになる
         with pytest.raises(RuntimeError) as excinfo:
             muxer.append_sample(mux_sample)
 
@@ -1133,7 +1132,7 @@ def test_append_sample_unusable_message_on_non_seekable_stream():
         )
     finally:
         stream.close()
-        os.close(read_fd)
+        sock_b.close()
 
 
 def test_append_sample_rollback_failure_message():
