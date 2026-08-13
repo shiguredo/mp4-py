@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-13
 - Model: Opus 4.7
 - Branch: feature/fix-append-sample-stream-rollback-on-error
 - Polished: 2026-08-12
@@ -75,3 +75,21 @@ append_sample 時に実際に失敗する入力 (検証済み):
 4. `tests/test_mp4.py` に「timescale=0 で失敗 → ストリーム位置と内容が巻き戻る」テスト、「修正後に retry して成功する」テスト、「非 seekable ストリームで使用不能メッセージが付く」テストを追加
 5. CHANGES.md の `## develop` に FIX エントリを追記 (shiguredo-changelog スキルの形式に従う)
 6. `NO_UV_SYNC=1 uv run pytest tests/` で全テスト通過を確認
+
+## 解決方法
+
+`src/lib.rs` の `Mp4FileMuxer::append_sample` を修正し、write 以降の全エラー経路でストリームを巻き戻すようにした。
+
+- `append_sample` は write 前に `stream.tell()` で `data_offset` を記録し、write 以降 (timescale 検証、track_kind 検証、sample_entry 変換、`core.append_sample()`、write 自体の失敗) を 1 つのクロージャにまとめ、失敗時は必ずロールバックを実行してからエラーを伝播する
+- ロールバック (`rollback_append`) は `stream.seekable()` が真で `truncate` が使える場合は `seek(data_offset)` + `truncate(data_offset)` で巻き戻す。それ以外の場合は例外メッセージに「The muxer is in an unusable state and must be discarded」を英語で付加する
+- `stream.tell()` 自体が失敗するストリーム (実パイプ等) は write に進む前にエラーを返し、同じ案内を付加する
+- ロールバック失敗時は元のエラーを優先し、メッセージに案内を付加して `RuntimeError` として伝播する
+- `Mp4FileMuxer` の class docstring と README.md の「MP4 ファイルの作成」節に「append_sample が失敗した場合の挙動」(seekable なら retry 可能、非 seekable なら破棄すること、with 構文の注意) を明記した
+- `tests/test_mp4.py` にテスト 5 件を追加した
+  - `test_append_sample_rollback_on_error`: timescale=0 で失敗 → 位置と内容が巻き戻る
+  - `test_append_sample_retry_after_rollback`: 補正して retry 成功 → demux で内容検証
+  - `test_append_sample_unusable_message_on_non_seekable_stream`: 実パイプで使用不能メッセージと元エラー保持を確認
+  - `test_append_sample_rollback_failure_message`: gzip.GzipFile (後方 seek 不可) でロールバック失敗メッセージと元エラー保持を確認
+  - `test_append_sample_core_error_rollback_and_retry`: sample_entry=None (MissingSampleEntry) で失敗 → 補正して retry 成功
+- CHANGES.md の `## develop` に [FIX] エントリを追記した
+- 全テスト通過を確認済み (GIL 有効環境で 96 passed / 7 skipped)
