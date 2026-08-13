@@ -1106,6 +1106,9 @@ def test_append_sample_unusable_message_on_non_seekable_stream():
           場合に、Muxer が使用不能になった旨の案内が例外メッセージに含まれる
           ことを確認する
     検証: 例外メッセージに「破棄すること」の文言が含まれること
+    注記: POSIX では tell() が先に失敗するが、Windows のパイプでは tell() が
+          成功するため write 後のロールバックに失敗する。どちらの経路でも
+          使用不能の案内が付加される
     """
     read_fd, write_fd = os.pipe()
     stream = os.fdopen(write_fd, "wb")
@@ -1115,22 +1118,18 @@ def test_append_sample_unusable_message_on_non_seekable_stream():
             track_kind="video",
             sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
             keyframe=True,
-            timescale=TIMESCALE,
+            # timescale=0 で必ず失敗させる (POSIX では tell() が先に失敗する)
+            timescale=0,
             duration=SAMPLE_DURATION,
             data=create_dummy_sample(0),
         )
 
-        # 実パイプは tell() が失敗するため、write 前に使用不能としてエラーになる
         with pytest.raises(RuntimeError) as excinfo:
             muxer.append_sample(mux_sample)
 
         # 使用不能になった旨の案内がメッセージに含まれること
         assert "The muxer is in an unusable state and must be discarded" in str(excinfo.value), (
             f"使用不能の案内が含まれること (実際: {excinfo.value})"
-        )
-        # 元の tell() エラーがメッセージに保持されていること
-        assert "failed to get stream position for append_sample" in str(excinfo.value), (
-            f"tell() の失敗が保持されていること (実際: {excinfo.value})"
         )
     finally:
         stream.close()
