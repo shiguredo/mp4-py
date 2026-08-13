@@ -46,6 +46,8 @@
 
 ### misc
 
+- [UPDATE] Free-Threading 環境で input_stream 共有レースの回帰テストを追加する
+  - @voluntas
 - [UPDATE] hypothesis を 6.158.1 に上げる
   - @voluntas
 - [UPDATE] pytest を 9.1.1 に上げる
