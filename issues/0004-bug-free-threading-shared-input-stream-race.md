@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-13
 - Model: Opus 4.7
 - Branch: feature/fix-free-threading-shared-input-stream-race
 - Polished: 2026-08-12
@@ -59,3 +59,14 @@ PyO3 移行時 (コミット 5694230) に、issue の設計方針 A 相当の実
 1. `tests/test_free_threading.py` に「複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出して全バイト比較するテスト」を追加する
 2. `tests/test_free_threading.py` に「同一 Demuxer の `next()` を続けるスレッドと取得済みサンプルの `.data` を読むスレッドを混在させるテスト」を追加する
 3. `NO_UV_SYNC=1 uv run pytest tests/test_free_threading.py --timeout=10` で 3.14t 環境にて全通過を確認する
+
+## 解決方法
+
+`tests/test_free_threading.py` に回帰テスト 2 件を追加した。実装 (stream_lock 共有) は既存のまま変更なし。
+
+- `test_demuxed_samples_parallel_data_access`: demux 完了後の全サンプルの `.data` を 8 スレッドから barrier で同時突入して読み出し、タイムスタンプでソートして `create_dummy_sample(i)` と全バイト直接比較する
+- `test_demuxer_next_with_parallel_data_access`: `next()` を続けるスレッド (1 本) と、取得済みサンプルの `.data` を読むスレッド (7 本) を queue で受け渡して混在させ、全サンプルの `.data` が期待値と全バイト一致することを検証する
+  - next スレッドは 1 本に限定した。複数本だと「最後のサンプルの put」と「取得完了イベントの set」の順序が保証されず、取りこぼしのフレークが起きるため
+- 検証は data hash ではなく既存テストと同じ全バイト直接比較。期待値は `create_dummy_sample(i)` とサンプル順で対応
+- 3.14t 環境で 7 件全通過 (0.14 秒)、GIL 有効環境 (3.12) では 91 passed / 7 skipped を確認済み
+- CHANGES.md の `## develop` の `### misc` にテスト追加エントリを追記した
