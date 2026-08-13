@@ -1910,6 +1910,10 @@ impl Mp4FileMuxerOptions {
 
 // ===== Mp4FileMuxer =====
 
+// append_sample 失敗時にストリームを巻き戻せない場合、Muxer は使用不能になる。
+// 破棄するようユーザーに伝える文言として、エラーメッセージに付加する。
+const UNUSABLE_MUXER_MESSAGE: &str = "The muxer is in an unusable state and must be discarded";
+
 // Free-Threading 対応: メソッドを &self に統一し、内部状態を Mutex で保護する。
 // nanobind の ft_mutex 相当のブロッキング動作をシミュレートする。
 struct MuxerState {
@@ -1918,6 +1922,18 @@ struct MuxerState {
     closed: bool,
 }
 
+/// MP4 ファイルのマルチプレクサー。
+///
+/// append_sample が失敗した場合の挙動:
+/// - seekable なストリームでは、書き込んだバイトが巻き戻され、入力の補正後に
+///   append_sample を retry できる
+/// - 非 seekable なストリーム (実パイプなど) や巻き戻しに失敗した場合は、Muxer が
+///   使用不能になり、以後の動作は保証されない。例外は RuntimeError になり、
+///   メッセージに案内と元のエラーが含まれる。close() は finalize を実行して
+///   破損ファイルを書き出すため、呼び出さずに破棄すること
+/// - with 構文では例外発生時も __exit__ が close() を実行してしまうため、非
+///   seekable なストリームでは with 構文を使わず、失敗時の破棄を考慮した
+///   使用方法を取ること
 #[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4FileMuxer {
     state: Mutex<MuxerState>,
@@ -1946,6 +1962,20 @@ impl Mp4FileMuxer {
                 .call_method1(py, "write", (PyBytes::new(py, bytes),))?;
         }
         state.finalized = true;
+        Ok(())
+    }
+
+    // append_sample が失敗したときに、write 済みのバイトを巻き戻す。
+    // seekable でないストリームや truncate できないストリームでは巻き戻せず、
+    // その場合は Muxer が使用不能になる
+    fn rollback_append(&self, py: Python<'_>, data_offset: u64) -> PyResult<()> {
+        let seekable: bool = self.stream.call_method0(py, "seekable")?.extract(py)?;
+        if !seekable {
+            return Err(PyRuntimeError::new_err("stream is not seekable"));
+        }
+        self.stream.call_method1(py, "seek", (data_offset,))?;
+        // 位置非依存のストリーム実装でも確実に切り詰めるため、位置を明示する
+        self.stream.call_method1(py, "truncate", (data_offset,))?;
         Ok(())
     }
 }
@@ -2023,30 +2053,59 @@ impl Mp4FileMuxer {
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("muxer already dropped"))?;
 
-        let data_offset: u64 = self.stream.call_method0(py, "tell")?.extract(py)?;
-        // Mp4MuxSample.data はすでに Py<PyBytes> なので、新しい PyBytes を作らず
-        // 元の Python bytes をそのまま stream.write に渡して余分なコピーを避ける。
-        let data_len = sample.data.bind(py).as_bytes().len();
-        self.stream
-            .call_method1(py, "write", (sample.data.clone_ref(py),))?;
+        // 実パイプのように tell() できないストリームは、write 後の巻き戻しも
+        // 不可能なため、write に進む前に使用不能としてエラーを返す
+        let data_offset: u64 = self
+            .stream
+            .call_method0(py, "tell")
+            .map_err(|err| {
+                PyRuntimeError::new_err(format!(
+                    "failed to get stream position for append_sample: {err}. {UNUSABLE_MUXER_MESSAGE}"
+                ))
+            })?
+            .extract(py)?;
 
-        let timescale = NonZeroU32::new(sample.timescale)
-            .ok_or_else(|| PyValueError::new_err("timescale must be non-zero"))?;
-        let track_kind = str_to_track_kind(&sample.track_kind)?;
-        let sample_entry_opt = sample.sample_entry.as_ref().map(|e| e.to_core(py));
+        // write 以降の失敗で書き込んだバイトがストリームに残ると、以降の
+        // append_sample が位置不一致で失敗し続ける。エラー時は write 前の位置へ
+        // 巻き戻して retry を可能にするため、write 以降を 1 つのクロージャに
+        // まとめ、失敗時は必ずロールバックを実行してからエラーを伝播する
+        let append_result = (|| -> PyResult<()> {
+            // Mp4MuxSample.data はすでに Py<PyBytes> なので、新しい PyBytes を作らず
+            // 元の Python bytes をそのまま stream.write に渡して余分なコピーを避ける。
+            let data_len = sample.data.bind(py).as_bytes().len();
+            self.stream
+                .call_method1(py, "write", (sample.data.clone_ref(py),))?;
 
-        let core_sample = CoreMuxSample {
-            track_kind,
-            sample_entry: sample_entry_opt,
-            keyframe: sample.keyframe,
-            timescale,
-            duration: sample.duration,
-            composition_time_offset: sample.composition_time_offset,
-            data_offset,
-            data_size: data_len,
-        };
+            let timescale = NonZeroU32::new(sample.timescale)
+                .ok_or_else(|| PyValueError::new_err("timescale must be non-zero"))?;
+            let track_kind = str_to_track_kind(&sample.track_kind)?;
+            let sample_entry_opt = sample.sample_entry.as_ref().map(|e| e.to_core(py));
 
-        core.append_sample(&core_sample).map_err(map_err)?;
+            let core_sample = CoreMuxSample {
+                track_kind,
+                sample_entry: sample_entry_opt,
+                keyframe: sample.keyframe,
+                timescale,
+                duration: sample.duration,
+                composition_time_offset: sample.composition_time_offset,
+                data_offset,
+                data_size: data_len,
+            };
+
+            core.append_sample(&core_sample).map_err(map_err)?;
+            Ok(())
+        })();
+
+        if let Err(err) = append_result {
+            // 巻き戻しに失敗した場合は Muxer が使用不能になるため、元のエラーに
+            // 案内を付加して伝播する
+            return match self.rollback_append(py, data_offset) {
+                Ok(()) => Err(err),
+                Err(rollback_err) => Err(PyRuntimeError::new_err(format!(
+                    "{err}. Additionally, failed to roll back the stream: {rollback_err}. {UNUSABLE_MUXER_MESSAGE}"
+                ))),
+            };
+        }
         Ok(())
     }
 

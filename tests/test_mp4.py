@@ -1,4 +1,8 @@
+import gzip
 import io
+import os
+
+import pytest
 
 from mp4 import (
     Mp4FileDemuxer,
@@ -1000,3 +1004,228 @@ def test_subtitle_mux_demux_mixed_roundtrip():
 
     demuxed_samples = list(demuxer)
     assert len(demuxed_samples) == 3
+
+
+# =============================================================================
+# append_sample 失敗時のロールバックテスト
+# =============================================================================
+
+
+def test_append_sample_rollback_on_error():
+    """append_sample が失敗したときに書き込んだバイトが巻き戻る
+
+    目的: timescale=0 で append_sample が失敗した場合に、write 済みのバイトが
+          ストリームから除去され、位置が呼び出し前のままであることを確認する
+    検証: 失敗後の tell() 位置と getvalue() の長さが write 前と一致すること
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    # timescale=0 は append_sample 内の検証で ValueError になる
+    mux_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=0,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+
+    # コンストラクタで初期ボックス群が書き込まれた後の位置と長さを記録する
+    position_before = output_buffer.tell()
+    length_before = len(output_buffer.getvalue())
+
+    with pytest.raises(ValueError):
+        muxer.append_sample(mux_sample)
+
+    # ストリーム位置が呼び出し前のままであること
+    assert output_buffer.tell() == position_before, (
+        f"ストリーム位置が {position_before} のままであること (実際: {output_buffer.tell()})"
+    )
+    # 書き込まれたバイトが除去されていること
+    assert len(output_buffer.getvalue()) == length_before, (
+        f"書き込み済みバイトが除去されていること (長さ {length_before} のまま。実際: {len(output_buffer.getvalue())})"
+    )
+
+
+def test_append_sample_retry_after_rollback():
+    """巻き戻し後に補正したサンプルで retry できる
+
+    目的: append_sample が失敗した後、入力の補正により 2 度目が成功し、
+          以降の mux が破綻しないことを確認する
+    検証: retry 後に finalize した出力を demux して内容が正しいこと
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    # timescale=0 で失敗させる
+    bad_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=0,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    with pytest.raises(ValueError):
+        muxer.append_sample(bad_sample)
+
+    # 補正して retry する
+    good_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(1),
+    )
+    muxer.append_sample(good_sample)
+    muxer.finalize()
+
+    # 出力が正常に demux できること
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demuxed_samples = list(demuxer)
+    demuxer.close()
+
+    assert len(demuxed_samples) == 1, f"サンプル数が 1 であること (実際: {len(demuxed_samples)})"
+    # 巻き戻し後のサンプルメタデータが正しいこと
+    assert demuxed_samples[0].timestamp == 0, (
+        f"タイムスタンプが 0 であること (実際: {demuxed_samples[0].timestamp})"
+    )
+    assert demuxed_samples[0].duration == SAMPLE_DURATION, (
+        f"duration が {SAMPLE_DURATION} であること (実際: {demuxed_samples[0].duration})"
+    )
+    assert demuxed_samples[0].data == create_dummy_sample(1), "retry 後のサンプルデータが壊れている"
+
+
+def test_append_sample_unusable_message_on_non_seekable_stream():
+    """非 seekable ストリームでは使用不能メッセージが付加される
+
+    目的: 実パイプのように seek できないストリームで append_sample が失敗した
+          場合に、Muxer が使用不能になった旨の案内が例外メッセージに含まれる
+          ことを確認する
+    検証: 例外メッセージに「破棄すること」の文言が含まれること
+    """
+    read_fd, write_fd = os.pipe()
+    stream = os.fdopen(write_fd, "wb")
+    try:
+        muxer = Mp4FileMuxer(stream)
+        mux_sample = Mp4MuxSample(
+            track_kind="video",
+            sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+            keyframe=True,
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(0),
+        )
+
+        # 実パイプは tell() が失敗するため、write 前に使用不能としてエラーになる
+        with pytest.raises(RuntimeError) as excinfo:
+            muxer.append_sample(mux_sample)
+
+        # 使用不能になった旨の案内がメッセージに含まれること
+        assert "The muxer is in an unusable state and must be discarded" in str(excinfo.value), (
+            f"使用不能の案内が含まれること (実際: {excinfo.value})"
+        )
+        # 元の tell() エラーがメッセージに保持されていること
+        assert "failed to get stream position for append_sample" in str(excinfo.value), (
+            f"tell() の失敗が保持されていること (実際: {excinfo.value})"
+        )
+    finally:
+        stream.close()
+        os.close(read_fd)
+
+
+def test_append_sample_rollback_failure_message():
+    """巻き戻しに失敗した場合に使用不能メッセージが付加される
+
+    目的: ロールバックが失敗するストリーム (gzip.GzipFile) で append_sample が
+          失敗した場合、例外メッセージに「破棄すること」の案内が付加される
+          ことを確認する
+    検証: 例外メッセージにロールバック失敗と使用不能の案内、元のエラーが
+          含まれること
+    """
+    buffer = io.BytesIO()
+    # GzipFile は write モードで後方 seek ができないため、ロールバックに失敗する
+    stream = gzip.GzipFile(fileobj=buffer, mode="wb")
+    try:
+        muxer = Mp4FileMuxer(stream)
+        mux_sample = Mp4MuxSample(
+            track_kind="video",
+            sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+            keyframe=True,
+            timescale=0,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(0),
+        )
+
+        # timescale=0 で失敗し、ロールバック (後方 seek) にも失敗する
+        with pytest.raises(RuntimeError) as excinfo:
+            muxer.append_sample(mux_sample)
+
+        # ロールバック失敗と使用不能の案内がメッセージに含まれること
+        assert "failed to roll back the stream" in str(excinfo.value), (
+            f"ロールバック失敗の案内が含まれること (実際: {excinfo.value})"
+        )
+        assert "The muxer is in an unusable state and must be discarded" in str(excinfo.value), (
+            f"使用不能の案内が含まれること (実際: {excinfo.value})"
+        )
+        # 元のエラーがメッセージに保持されていること
+        assert "timescale must be non-zero" in str(excinfo.value), (
+            f"元のエラーが保持されていること (実際: {excinfo.value})"
+        )
+    finally:
+        stream.close()
+
+
+def test_append_sample_core_error_rollback_and_retry():
+    """core が失敗する経路でもロールバックして retry できる
+
+    目的: 先頭サンプルで sample_entry 未指定の場合、core.append_sample が
+          MissingSampleEntry で失敗するが、ストリームは巻き戻され、sample_entry
+          を補正した 2 度目の append_sample が成功することを確認する
+    検証: retry 後に finalize した出力を demux して内容が正しいこと
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    # 先頭サンプルで sample_entry 未指定は core の MissingSampleEntry で失敗する
+    bad_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=None,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    with pytest.raises(RuntimeError):
+        muxer.append_sample(bad_sample)
+
+    # sample_entry を補正して retry する
+    good_sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(1),
+    )
+    muxer.append_sample(good_sample)
+    muxer.finalize()
+
+    # 出力が正常に demux できること
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demuxed_samples = list(demuxer)
+    demuxer.close()
+
+    assert len(demuxed_samples) == 1, f"サンプル数が 1 であること (実際: {len(demuxed_samples)})"
+    # 巻き戻し後のサンプルメタデータが正しいこと
+    assert demuxed_samples[0].timestamp == 0, (
+        f"タイムスタンプが 0 であること (実際: {demuxed_samples[0].timestamp})"
+    )
+    assert demuxed_samples[0].duration == SAMPLE_DURATION, (
+        f"duration が {SAMPLE_DURATION} であること (実際: {demuxed_samples[0].duration})"
+    )
+    assert demuxed_samples[0].data == create_dummy_sample(1), "retry 後のサンプルデータが壊れている"
