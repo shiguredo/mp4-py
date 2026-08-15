@@ -71,6 +71,7 @@ demux 系テストで破損データを渡しても、パースエラーは PyO3
     - `"failed to read sample data"` (src/lib.rs の `sample.data` アクセス時の読み込みサイズ不一致に対応)
   - ホワイトリスト外の `RuntimeError` が飛んだらテスト失敗とする
   - `sample.data` アクセスも try の範囲に含める (データサイズ検証で例外を投げうるため)
+  - 注記: Demux のパースエラーの Python 側への報告 (エラー隠蔽の解消) は別 issue で対応予定。その実装後は、ホワイトリストにコア由来のパースエラーメッセージ (`Failed to decode MP4 box` / `Sample table error` 系、小文字で `failed to decode mp4 box` / `sample table error`) を追加すること。ホワイトリストの追加は本 issue の実装時点でパースエラーが表面化しているかどうかに応じて行う
 
 ### 命名規則の統一
 
