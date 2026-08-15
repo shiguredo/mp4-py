@@ -4,10 +4,16 @@ use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use pyo3::create_exception;
 use pyo3::exceptions::{PyRuntimeError, PyStopIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::MutexExt;
 use pyo3::types::{PyBytes, PyString};
+
+// 破損 MP4 データの検出エラーを Python 側で型分類できるようにするための例外。
+// 基底を PyRuntimeError にすることで、既存の except RuntimeError との後方互換性を
+// 維持する。
+create_exception!(mp4.mp4_ext, Mp4Exception, PyRuntimeError);
 
 use shiguredo_mp4::{
     FixedPointNumber, LanguageCode, TrackKind, Uint, Utf8String,
@@ -1753,7 +1759,7 @@ impl Mp4DemuxSample {
         }
         // 破損データで巨大な値になっている可能性を弾く
         if self.data_size > MAX_SAMPLE_SIZE {
-            return Err(map_err(format!(
+            return Err(Mp4Exception::new_err(format!(
                 "Sample data size too large (corrupted data?): {} bytes (max: {} bytes)",
                 self.data_size, MAX_SAMPLE_SIZE
             )));
@@ -1784,7 +1790,7 @@ impl Mp4DemuxSample {
                 .call_method1(py, "read", (self.data_size,))?
                 .extract(py)?;
             if bytes.bind(py).as_bytes().len() as u64 != self.data_size {
-                return Err(map_err(format!(
+                return Err(Mp4Exception::new_err(format!(
                     "Failed to read sample data: expected {} bytes, got {}",
                     self.data_size,
                     bytes.bind(py).as_bytes().len()
@@ -2210,7 +2216,7 @@ impl Mp4FileDemuxer {
         loop {
             iterations += 1;
             if iterations > MAX_FEED_ITERATIONS {
-                return Err(map_err(
+                return Err(Mp4Exception::new_err(
                     "feed_required_input: too many iterations (possible infinite loop on corrupted data)",
                 ));
             }
@@ -2218,14 +2224,14 @@ impl Mp4FileDemuxer {
                 return Ok(false);
             };
             if position > i64::MAX as u64 {
-                return Err(map_err(format!(
+                return Err(Mp4Exception::new_err(format!(
                     "Required input position too large (corrupted data?): {position}"
                 )));
             }
             if let Some(n) = size
                 && n as u64 > i64::MAX as u64
             {
-                return Err(map_err(format!(
+                return Err(Mp4Exception::new_err(format!(
                     "Required input size too large (corrupted data?): {n}"
                 )));
             }
@@ -2367,7 +2373,7 @@ impl Mp4FileDemuxer {
             let extracted: Option<NextSampleExtracted> = match state.core.next_sample() {
                 Ok(Some(sample)) => {
                     if sample.data_size as u64 > MAX_SAMPLE_SIZE {
-                        return Err(map_err(format!(
+                        return Err(Mp4Exception::new_err(format!(
                             "Sample data size too large (corrupted data?): {} bytes",
                             sample.data_size
                         )));
@@ -2488,10 +2494,11 @@ impl Mp4FileDemuxer {
 mod mp4_ext {
     #[pymodule_export]
     use super::{
-        Mp4DemuxSample, Mp4FileDemuxer, Mp4FileMuxer, Mp4FileMuxerOptions, Mp4MuxSample,
-        Mp4SampleEntryAv01, Mp4SampleEntryAvc1, Mp4SampleEntryFlac, Mp4SampleEntryHev1,
-        Mp4SampleEntryHvc1, Mp4SampleEntryMp4a, Mp4SampleEntryOpus, Mp4SampleEntryStpp,
-        Mp4SampleEntryTx3g, Mp4SampleEntryVp08, Mp4SampleEntryVp09, Mp4SampleEntryWvtt,
-        Mp4TrackInfo, Mp4TrackMetadata, estimate_maximum_moov_box_size, library_version,
+        Mp4DemuxSample, Mp4Exception, Mp4FileDemuxer, Mp4FileMuxer, Mp4FileMuxerOptions,
+        Mp4MuxSample, Mp4SampleEntryAv01, Mp4SampleEntryAvc1, Mp4SampleEntryFlac,
+        Mp4SampleEntryHev1, Mp4SampleEntryHvc1, Mp4SampleEntryMp4a, Mp4SampleEntryOpus,
+        Mp4SampleEntryStpp, Mp4SampleEntryTx3g, Mp4SampleEntryVp08, Mp4SampleEntryVp09,
+        Mp4SampleEntryWvtt, Mp4TrackInfo, Mp4TrackMetadata, estimate_maximum_moov_box_size,
+        library_version,
     };
 }
