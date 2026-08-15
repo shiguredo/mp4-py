@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-cargo-toml-invalid-inline-table
 - Polished: 2026-08-15
@@ -51,9 +51,11 @@ inline table 内の改行は TOML 1.0 で禁止されている (TOML v1.0.0 仕�
 
 ## 解決方法
 
-1. `Cargo.toml` の `[dependencies]` の `pyo3` を 1 行の inline table に書き換える (コメントは維持)
-2. `python3 -c "import tomllib; tomllib.load(open('Cargo.toml','rb'))"` で厳密パースが通ることを確認する
-3. `uv run --with "maturin>=1.14,<2" maturin build --release --out wheelhouse --generate-stubs` で wheel が生成できることを確認する (ローカルの maturin が 1.14 未満でも、pyproject.toml の要求バージョンで検証する)
-4. `maturin develop --release` と `maturin sdist` は、maturin 1.14 以降が入った開発環境で実行して成功を確認する
-5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
-6. CHANGES.md の `### misc` に「[FIX] Cargo.toml の pyo3 依存を TOML 1.0 準拠の 1 行 inline table に修正する」を追記する (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+1. `Cargo.toml` の `[dependencies]` の `pyo3` を 1 行の inline table に書き換えた (コメントは維持)
+2. `python3 -c "import tomllib; tomllib.load(open('Cargo.toml','rb'))"` で厳密パースが通ることを確認した
+3. `uv run --with "maturin>=1.14,<2" maturin build --release --out wheelhouse --generate-stubs` で wheel が生成できることを確認した
+4. `maturin develop --release` と `maturin sdist` が成功することを確認した
+5. `cargo build` / `cargo clippy --all-targets -- -D warnings` が従来どおり通ることを確認した
+6. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (97 passed, 7 skipped) を確認した
+7. prek auto-update で tombi を 1.4.0 に更新した。tombi 1.2.0 は 1 行 inline table をマルチライン形式に書き戻すため、1.4.0 で 1 行形式が維持されることを確認した (prek run tombi-format が Passed)
+8. CHANGES.md の `### misc` に「[FIX] Cargo.toml の pyo3 依存を TOML 1.0 準拠の 1 行 inline table に修正する」と「[UPDATE] tombi を 1.4.0 に上げる」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)

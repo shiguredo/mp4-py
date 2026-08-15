@@ -62,14 +62,11 @@ hooks = [
 # rev は prek auto-update で更新する
 [[repos]]
 repo = "https://github.com/tombi-toml/tombi-pre-commit"
-rev = "v1.2.0"
+rev = "v1.4.0"
 hooks = [
   # Cargo.lock / uv.lock は自動生成ファイルなので tombi の対象外にする
   { id = "tombi-lint", exclude = { glob = ["**/Cargo.lock", "**/uv.lock"] } },
-  {
-    id = "tombi-format",
-    exclude = { glob = ["**/Cargo.lock", "**/uv.lock"] }
-  },
+  { id = "tombi-format", exclude = { glob = ["**/Cargo.lock", "**/uv.lock"] } },
 ]
 
 # プロジェクト固有のローカルフック
