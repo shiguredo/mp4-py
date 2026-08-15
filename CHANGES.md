@@ -41,6 +41,10 @@
 - [ADD] `Mp4SampleEntryStpp` / `Mp4SampleEntryWvtt` / `Mp4SampleEntryTx3g` を追加する
   - 字幕トラック (`track_kind="subtitle"`) の mux / demux に対応する
   - @voluntas
+- [ADD] `Mp4Exception` を Python 側で捕捉可能にする
+  - 破損 MP4 データの検出エラーを `mp4.Mp4Exception` として型分類できるようにする
+  - 基底は `RuntimeError` なので既存の `except RuntimeError:` は引き続き機能する
+  - @voluntas
 - [UPDATE] mp4-rust を 2026.4.0 に上げる
   - @voluntas
 - [FIX] append_sample 失敗時に書き込んだバイトがストリームに残らないようにする

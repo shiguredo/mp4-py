@@ -1,10 +1,14 @@
 import gzip
 import io
+import pickle
 import socket
+import struct
 
 import pytest
 
 from mp4 import (
+    Mp4DemuxSample,
+    Mp4Exception,
     Mp4FileDemuxer,
     Mp4FileMuxer,
     Mp4FileMuxerOptions,
@@ -23,7 +27,6 @@ from mp4 import (
     Mp4SampleEntryTx3g,
     Mp4TrackInfo,
     Mp4TrackMetadata,
-    Mp4DemuxSample,
     estimate_maximum_moov_box_size,
 )
 
@@ -1243,3 +1246,190 @@ def test_append_sample_core_error_rollback_and_retry():
         f"duration が {SAMPLE_DURATION} であること (実際: {demuxed_samples[0].duration})"
     )
     assert demuxed_samples[0].data == create_dummy_sample(1), "retry 後のサンプルデータが壊れている"
+
+
+def test_mp4_exception_is_exported():
+    """Mp4Exception が mp4.Mp4Exception としてアクセスできる
+
+    目的: 破損データ検出エラーの型分類用例外が公開されていることを確認する
+    検証: import 経由でクラスにアクセスでき、RuntimeError のサブクラスであること
+    """
+    assert isinstance(Mp4Exception, type)
+    assert issubclass(Mp4Exception, RuntimeError), (
+        "Mp4Exception は RuntimeError のサブクラスであること"
+    )
+
+
+def test_mp4_exception_module_and_pickle():
+    """Mp4Exception の module と pickle ラウンドトリップ
+
+    目的: __module__ が mp4.mp4_ext になっていること (pickle と repr のため) と、
+          pickle でシリアライズ → 復元できることを確認する
+    検証: __module__ の値と pickle ラウンドトリップの成功
+    """
+    assert Mp4Exception.__module__ == "mp4.mp4_ext", (
+        f"__module__ が mp4.mp4_ext であること (実際: {Mp4Exception.__module__})"
+    )
+    restored = pickle.loads(pickle.dumps(Mp4Exception))
+    assert restored is Mp4Exception, "pickle ラウンドトリップで同一クラスが復元されること"
+
+
+def test_mp4_exception_caught_for_corrupted_sample_data():
+    """破損データ検出エラーが Mp4Exception として発火する
+
+    目的: MAX_SAMPLE_SIZE ガードが Mp4Exception を発生させ、isinstance(e,
+          RuntimeError) も真であることを確認する
+    検証: Mp4DemuxSample を data_size=2**30+1 で直接構築して .data を呼ぶと
+          Mp4Exception が発火し、RuntimeError のサブクラスとして捕捉できること
+    """
+    track = Mp4TrackInfo(
+        track_id=1,
+        kind="video",
+        duration=5000000,
+        timescale=1000000,
+    )
+    sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
+    demux_sample = Mp4DemuxSample(
+        track=track,
+        sample_entry=sample_entry,
+        keyframe=True,
+        timestamp=500000,
+        duration=33333,
+        data_offset=0,
+        data_size=2**30 + 1,
+        input_stream=io.BytesIO(b"x"),
+    )
+
+    with pytest.raises(Mp4Exception, match="Sample data size too large") as excinfo:
+        _ = demux_sample.data
+    assert isinstance(excinfo.value, RuntimeError), (
+        "Mp4Exception は RuntimeError のサブクラスとして捕捉できること"
+    )
+
+
+def test_mp4_exception_caught_for_sample_data_size_mismatch():
+    """読み込みサイズ不一致エラーが Mp4Exception として発火する
+
+    目的: 破損 MP4 のサンプルサイズが実ファイルサイズを超える場合の検出エラー
+          (Failed to read sample data) が Mp4Exception として発火することを確認する
+    検証: Mp4DemuxSample を data_size=4 で構築し、2 バイトしかない BytesIO を渡して
+          .data を呼ぶと Mp4Exception が発火すること
+    """
+    track = Mp4TrackInfo(
+        track_id=1,
+        kind="video",
+        duration=5000000,
+        timescale=1000000,
+    )
+    sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
+    demux_sample = Mp4DemuxSample(
+        track=track,
+        sample_entry=sample_entry,
+        keyframe=True,
+        timestamp=500000,
+        duration=33333,
+        data_offset=0,
+        data_size=4,
+        input_stream=io.BytesIO(b"xx"),
+    )
+
+    with pytest.raises(Mp4Exception, match="Failed to read sample data") as excinfo:
+        _ = demux_sample.data
+    assert isinstance(excinfo.value, RuntimeError), (
+        "Mp4Exception は RuntimeError のサブクラスとして捕捉できること"
+    )
+
+
+def test_mp4_exception_caught_for_corrupted_stsz():
+    """__next__ の MAX_SAMPLE_SIZE ガードが Mp4Exception として発火する
+
+    目的: 破損 MP4 の stsz ボックスが巨大な sample_size を持つ場合に、イテレーション
+          中の __next__ ガードが Mp4Exception を発生させることを確認する
+    検証: 正規 MP4 の stsz の sample_size フィールドを 2**30+1 に書き換えて demux
+          すると Mp4Exception が発火すること
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample_entry = Mp4SampleEntryVp08(width=640, height=480)
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="video",
+            sample_entry=sample_entry,
+            keyframe=True,
+            timescale=30000,
+            duration=1001,
+            data=create_dummy_sample(0),
+        )
+    )
+    muxer.finalize()
+
+    mp4_bytes = bytearray(output_buffer.getvalue())
+    # find(b"stsz") は type フィールドの先頭位置を返す。
+    # stsz ボックスは type 直後に version/flags(4) + sample_size(4) + sample_count(4) が続く。
+    stsz_pos = mp4_bytes.find(b"stsz")
+    assert stsz_pos >= 0, "stsz ボックスが存在すること"
+    # sample_size を巨大値に書き換える (固定サイズ形式に相当し、すべてのサンプルが対象になる)
+    mp4_bytes[stsz_pos + 8 : stsz_pos + 12] = (2**30 + 1).to_bytes(4, "big")
+
+    demuxer = Mp4FileDemuxer(io.BytesIO(bytes(mp4_bytes)))
+    with pytest.raises(Mp4Exception, match="Sample data size too large") as excinfo:
+        for _ in demuxer:
+            pass
+    assert isinstance(excinfo.value, RuntimeError), (
+        "Mp4Exception は RuntimeError のサブクラスとして捕捉できること"
+    )
+
+
+def test_mp4_exception_caught_for_required_input_size():
+    """Required input size ガードが Mp4Exception として発火する
+
+    目的: 破損 MP4 の largesize が巨大な場合に、feed_required_input のサイズガードが
+          Mp4Exception を発生させることを確認する
+    検証: size=1 (largesize 使用) + ftyp + largesize=2**63+16 のバイト列を demux
+          すると Mp4Exception が発火すること
+    """
+    # ボックスサイズ 1 は largesize フィールド (8 バイト) を使うことを意味する。
+    # 末尾の 16 バイトは ftyp ボックス本体であり、読み込み要求サイズ (32 バイト)
+    # を満たすフィラーを兼ねる。これが欠けると EOF 判定でループが終了し、
+    # サイズガードに到達しない。
+    data = struct.pack(">I", 1) + b"ftyp" + struct.pack(">Q", 2**63 + 16) + b"\x00" * 16
+    demuxer = Mp4FileDemuxer(io.BytesIO(data))
+    with pytest.raises(Mp4Exception, match="Required input size too large") as excinfo:
+        for _ in demuxer:
+            pass
+    assert isinstance(excinfo.value, RuntimeError), (
+        "Mp4Exception は RuntimeError のサブクラスとして捕捉できること"
+    )
+
+
+def test_mp4_exception_not_raised_for_other_errors():
+    """破損データ以外のエラーは RuntimeError のままである
+
+    目的: 内部状態エラー (muxer is closed / demuxer is closed) が Mp4Exception に
+          変換されないことを確認する
+    検証: close() 後の append_sample と close() 後の demux が type(e) is
+          RuntimeError のまま発火すること
+    """
+    muxer = Mp4FileMuxer(io.BytesIO())
+    muxer.close()
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    with pytest.raises(RuntimeError, match="muxer is closed") as excinfo:
+        muxer.append_sample(sample)
+    assert type(excinfo.value) is RuntimeError, (
+        "Mp4Exception ではなく RuntimeError そのものであること"
+    )
+
+    demuxer = Mp4FileDemuxer(io.BytesIO(b"x"))
+    demuxer.close()
+    with pytest.raises(RuntimeError, match="demuxer is closed") as excinfo:
+        _ = demuxer.tracks
+    assert type(excinfo.value) is RuntimeError, (
+        "Mp4Exception ではなく RuntimeError そのものであること"
+    )

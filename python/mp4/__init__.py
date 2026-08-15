@@ -5,6 +5,7 @@ from typing import Literal, Union
 
 from .mp4_ext import (
     Mp4DemuxSample,
+    Mp4Exception,
     Mp4FileDemuxer,
     Mp4FileMuxer,
     Mp4FileMuxerOptions,
@@ -59,6 +60,7 @@ __all__ = [
     "__version__",
     "native_version",
     "estimate_maximum_moov_box_size",
+    "Mp4Exception",
     "Mp4TrackKind",
     "Mp4TrackInfo",
     "Mp4TrackMetadata",
