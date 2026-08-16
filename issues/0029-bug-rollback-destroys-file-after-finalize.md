@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-rollback-destroys-file-after-finalize
 - Polished: 2026-08-15
@@ -51,8 +51,11 @@ finalize 後に `append_sample` を呼ぶと:
 
 ## 解決方法
 
-1. `src/lib.rs` の `Mp4FileMuxer::append_sample` 冒頭で `state.finalized` をチェックし、finalize 済みなら `PyRuntimeError` (メッセージに "finalized" を含む) を返す
-2. `tests/test_mp4.py` に、finalize 後の append_sample が `RuntimeError` (メッセージに "finalized" を含む) になり、出力バッファの内容が finalize 直後の内容と一致することを検証するテストを追加する (`pytest.raises(RuntimeError, match="finalized")` と BytesIO の内容比較)
-3. 既存テスト `prop_append_after_finalize_raises_error` (`pytest.raises(Exception)`) はこの変更で成立し続ける。エラーメッセージが "finalized" を含むため、後続のテスト型・メッセージ指定の変更 (別 issue で予定) とも整合する
-4. CHANGES.md の `## develop` に「[FIX] finalize 後の append_sample が出力ファイルを破壊しないようにする」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` の `Mp4FileMuxer::append_sample` 冒頭 (write 実行前) で `state.finalized` をチェックし、finalize 済みなら `PyRuntimeError` (コアの `MuxError::AlreadyFinalized` と同じ文言 `Muxer has already been finalized`) を返すようにした
+   - チェック順は lock → closed → finalized → tell/write で、write および tell より前に finalized を検知する
+   - コメントに `FinalizedBoxes::offset_and_bytes_pairs` が mdat ヘッダーを最後に返すため finalize 直後のストリーム位置が mdat ヘッダー末尾になる、という根拠を明記した
+2. `tests/test_mp4.py` に 2 テストを追加した:
+   - `test_append_sample_after_finalize_preserves_output`: 通常レイアウトで finalize 後の append_sample が `RuntimeError` (match="finalized") になり、出力バッファの内容が finalize 直後と一致すること (ロールバックによる truncate が実行されないこと) を検証
+   - `test_append_sample_after_finalize_preserves_output_with_faststart`: `reserved_moov_box_size` 指定時 (faststart) でも同様に出力が破壊されないことを検証
+3. CHANGES.md の `## develop` のメインセクションに「[FIX] finalize 後の append_sample が出力ファイルを破壊しないようにする」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+4. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (106 passed, 7 skipped) を確認した
