@@ -2,9 +2,9 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
-- Branch: feature/test-fuzzing-fix-exception-swallowing-and-rename
+- Branch: feature/fix-fuzzing-exception-swallowing
 - Polished: 2026-08-12
 
 ## 目的
@@ -95,30 +95,20 @@ demux 系テストで破損データを渡しても、パースエラーは PyO3
 
 ## 解決方法
 
-1. `git mv tests/test_fuzzing.py tests/prop_fuzzing.py`
-2. `tests/prop_fuzzing.py` 内で全 `test_fuzzing_*` を `prop_fuzzing_*` に置換
-3. モジュール docstring (「ランダムなデータを入力してクラッシュしないことを確認する」) をホワイトリスト assert による想定外例外検出を含む内容に更新
-4. `prop_fuzzing_muxer_random_data` のデータ生成を修正:
-   - timescale をテスト全体で 1 回だけ生成し、全サンプルで共通使用
-   - 先頭サンプルを keyframe=True に固定
-   - try/except を削除 (有効入力で例外が出ないことを検証)
-5. demux 系 9 テストの try/except を以下のパターンに書き換え:
-   ```python
-   allowed_error_patterns = [
-       "corrupted data",
-       "too many iterations",
-       "required input",
-       "failed to read sample data",
-   ]
-   try:
-       for sample in demuxer:
-           _ = sample.data
-   except RuntimeError as e:
-       assert any(p in str(e).lower() for p in allowed_error_patterns), \
-           f"予期しないエラーメッセージ: {e}"
-   ```
-   - パターンは小文字固定 (照合時に `str(e).lower()` と比較するため)
-   - 9 テストで重複するため `allowed_error_patterns` はモジュール定数として定義する
-6. `tests/prop_error.py` の `prop_append_after_finalize_raises_error` の `pytest.raises(Exception)` を `pytest.raises(RuntimeError, match="finalized")` に変更
-7. `NO_UV_SYNC=1 uv run pytest tests/` で全テスト通過を確認
-8. `issues/0016-test-add-pytest-timeout-config.md` の対応後に実施すること (timeout 設定が先)
+1. `git mv tests/test_fuzzing.py tests/prop_fuzzing.py` でリネームした
+2. `tests/prop_fuzzing.py` 内の全 10 関数の `test_fuzzing_*` を `prop_fuzzing_*` に置換した
+3. モジュール docstring を「想定内の破損データ由来エラーは許容し、想定外の例外はテスト失敗として検出する」内容に更新した
+4. `prop_fuzzing_muxer_random_data` のデータ生成を修正した:
+   - timescale をテスト全体で 1 回だけ生成し、全サンプルで共通使用した
+   - 先頭サンプルを keyframe=True に固定した
+   - try/except を削除し、有効入力で例外が出ないことを検証するようにした
+5. demux 系 9 テストの try/except をホワイトリスト assert に書き換えた:
+   - モジュール定数 `ALLOWED_ERROR_PATTERNS` (小文字固定 4 パターン) を定義した
+   - `except RuntimeError as e` で捕捉し、ホワイトリスト外のメッセージはテスト失敗とした
+   - `StopIteration` / `ValueError` の catch を全箇所から削除した
+   - `sample.data` アクセスを try の範囲に含めた (データサイズ検証の例外検出のため)
+   - 重複していた ftyp ヘッダーを `VALID_FTYP_BOX` 定数に統合した
+6. `tests/prop_error.py` の `prop_append_after_finalize_raises_error` の `pytest.raises(Exception)` を `pytest.raises(RuntimeError, match="finalized")` に変更した
+7. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (104 passed, 7 skipped) を確認した
+8. ブランチ名を `feature/fix-fuzzing-exception-swallowing` に変更した (当初の `feature/test-` は shiguredo-git の命名規則に該当しないため)
+9. CHANGES.md の `### misc` に「[FIX] fuzzing テストの例外握りつぶしを解消し、PBT 命名規則に統一する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)

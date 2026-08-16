@@ -46,7 +46,7 @@ def prop_append_after_finalize_raises_error(
     muxer.finalize()
 
     # finalize 後に追加しようとするとエラー
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="finalized"):
         muxer.append_sample(mux_sample)
 
 

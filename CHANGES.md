@@ -72,6 +72,11 @@
   - @voluntas
 - [FIX] Cargo.toml の pyo3 依存を TOML 1.0 準拠の 1 行 inline table に修正する
   - @voluntas
+- [FIX] fuzzing テストの例外握りつぶしを解消し、PBT 命名規則に統一する
+  - 破損データ由来のエラーメッセージのホワイトリスト assert に置き換える
+  - `tests/test_fuzzing.py` を `tests/prop_fuzzing.py` にリネームする
+  - `pytest.raises(Exception)` を `pytest.raises(RuntimeError, match="finalized")` に修正する
+  - @voluntas
 
 ## 2026.1.0
 
