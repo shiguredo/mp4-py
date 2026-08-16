@@ -52,7 +52,8 @@ def st_vp08_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryVp08:
         width=draw(st_width),
         height=draw(st_height),
         bit_depth=draw(st.sampled_from([8, 10, 12])),
-        chroma_subsampling=draw(st.integers(min_value=0, max_value=3)),
+        # 3 ビット幅の上限 (7) まで roundtrip が成立する
+        chroma_subsampling=draw(st.integers(min_value=0, max_value=7)),
         video_full_range_flag=draw(st.booleans()),
         colour_primaries=draw(st_u8),
         transfer_characteristics=draw(st_u8),
@@ -68,7 +69,8 @@ def st_vp09_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryVp09:
         profile=draw(st.integers(min_value=0, max_value=3)),
         level=draw(st.integers(min_value=10, max_value=62)),
         bit_depth=draw(st.sampled_from([8, 10, 12])),
-        chroma_subsampling=draw(st.integers(min_value=0, max_value=3)),
+        # 3 ビット幅の上限 (7) まで roundtrip が成立する
+        chroma_subsampling=draw(st.integers(min_value=0, max_value=7)),
         video_full_range_flag=draw(st.booleans()),
         colour_primaries=draw(st_u8),
         transfer_characteristics=draw(st_u8),
@@ -108,15 +110,17 @@ def st_hev1_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryHev1:
     return Mp4SampleEntryHev1(
         width=draw(st_width),
         height=draw(st_height),
-        general_profile_idc=draw(st.integers(min_value=1, max_value=5)),
+        # 5 ビット幅の上限 (31) まで roundtrip が成立する
+        general_profile_idc=draw(st.integers(min_value=1, max_value=31)),
         general_level_idc=draw(st.integers(min_value=30, max_value=186)),
         nalu_types=nalu_types,
         nalu_data=nalu_data,
         general_profile_space=draw(st.integers(min_value=0, max_value=3)),
         general_tier_flag=draw(st.integers(min_value=0, max_value=1)),
         chroma_format_idc=draw(st.integers(min_value=0, max_value=3)),
-        bit_depth_luma_minus8=draw(st.integers(min_value=0, max_value=4)),
-        bit_depth_chroma_minus8=draw(st.integers(min_value=0, max_value=4)),
+        # 3 ビット幅の上限 (7) まで roundtrip が成立する
+        bit_depth_luma_minus8=draw(st.integers(min_value=0, max_value=7)),
+        bit_depth_chroma_minus8=draw(st.integers(min_value=0, max_value=7)),
         length_size_minus_one=draw(st.sampled_from([0, 1, 3])),
     )
 
@@ -130,15 +134,17 @@ def st_hvc1_sample_entry(draw: st.DrawFn) -> Mp4SampleEntryHvc1:
     return Mp4SampleEntryHvc1(
         width=draw(st_width),
         height=draw(st_height),
-        general_profile_idc=draw(st.integers(min_value=1, max_value=5)),
+        # 5 ビット幅の上限 (31) まで roundtrip が成立する
+        general_profile_idc=draw(st.integers(min_value=1, max_value=31)),
         general_level_idc=draw(st.integers(min_value=30, max_value=186)),
         nalu_types=nalu_types,
         nalu_data=nalu_data,
         general_profile_space=draw(st.integers(min_value=0, max_value=3)),
         general_tier_flag=draw(st.integers(min_value=0, max_value=1)),
         chroma_format_idc=draw(st.integers(min_value=0, max_value=3)),
-        bit_depth_luma_minus8=draw(st.integers(min_value=0, max_value=4)),
-        bit_depth_chroma_minus8=draw(st.integers(min_value=0, max_value=4)),
+        # 3 ビット幅の上限 (7) まで roundtrip が成立する
+        bit_depth_luma_minus8=draw(st.integers(min_value=0, max_value=7)),
+        bit_depth_chroma_minus8=draw(st.integers(min_value=0, max_value=7)),
         length_size_minus_one=draw(st.sampled_from([0, 1, 3])),
     )
 

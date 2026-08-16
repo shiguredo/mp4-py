@@ -196,6 +196,288 @@ def test_mux_demux_roundtrip_with_faststart():
         assert demuxed.data == original["data"]
 
 
+def test_sample_entry_value_range_validation_vp08():
+    """Vp08 の値域検証
+
+    目的: vpcC のビット幅 (bit_depth 4 ビット / chroma_subsampling 3 ビット) と
+          bit_depth の意味論的値域 (8 / 10 / 12) を超える値が黙って切り捨てられない
+          ことを確認する
+    検証: ビット幅超・意味論的値域超の値で ValueError が発火すること
+    """
+    # bit_depth は 4 ビット幅 (0..=15)。16 はシフトで u8 から折り返し黙って 0 になる
+    with pytest.raises(ValueError, match="bit_depth"):
+        Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT, bit_depth=16)
+    # bit_depth は 4 ビット幅内だが、意味論的に 8 / 10 / 12 のみ
+    with pytest.raises(ValueError, match="bit_depth"):
+        Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT, bit_depth=9)
+    # chroma_subsampling は 3 ビット幅 (0..=7)。8 はビット 3 が bit_depth 側に混入する
+    with pytest.raises(ValueError, match=r"chroma_subsampling must be 0\.\.=0x7, got 0x8"):
+        Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT, chroma_subsampling=8)
+
+
+def test_sample_entry_value_range_validation_vp09():
+    """Vp09 の値域検証
+
+    目的: vpcC の値域検証 (VpccBox を Vp08 と共有する) が Vp09 でも機能することを
+          確認する。検証内容は test_sample_entry_value_range_validation_vp08 と同一
+    検証: ビット幅超・意味論的値域超の値で ValueError が発火すること
+    """
+    with pytest.raises(ValueError, match="bit_depth"):
+        Mp4SampleEntryVp09(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            profile=0,
+            level=0,
+            bit_depth=16,
+        )
+    with pytest.raises(ValueError, match="bit_depth"):
+        Mp4SampleEntryVp09(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            profile=0,
+            level=0,
+            bit_depth=9,
+        )
+    with pytest.raises(ValueError, match="chroma_subsampling"):
+        Mp4SampleEntryVp09(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            profile=0,
+            level=0,
+            chroma_subsampling=8,
+        )
+
+
+def test_sample_entry_value_range_validation_avc1():
+    """Avc1 の値域検証
+
+    目的: avcC のビット幅 (length_size_minus_one 2 ビット / chroma_format 2 ビット /
+          bit_depth_*_minus8 3 ビット) を超える値が黙って切り捨てられないことを
+          確認する
+    検証: 上限超の値で ValueError が発火すること
+    """
+    base = dict(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        avc_profile_indication=0x42,
+        avc_level_indication=0x29,
+        profile_compatibility=0xC0,
+    )
+    # length_size_minus_one は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="length_size_minus_one"):
+        Mp4SampleEntryAvc1(**base, length_size_minus_one=4)
+    # chroma_format は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="chroma_format"):
+        Mp4SampleEntryAvc1(**base, chroma_format=4)
+    # bit_depth_luma_minus8 は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="bit_depth_luma_minus8"):
+        Mp4SampleEntryAvc1(**base, bit_depth_luma_minus8=8)
+    # bit_depth_chroma_minus8 は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="bit_depth_chroma_minus8"):
+        Mp4SampleEntryAvc1(**base, bit_depth_chroma_minus8=8)
+
+
+def test_sample_entry_value_range_validation_hev1():
+    """Hev1 の値域検証
+
+    目的: hvcC のビット幅を超える値が黙って切り捨て・隣接ビットを汚染しないことを
+          確認する
+    検証: 上限超の値で ValueError が発火すること
+    """
+    base = dict(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        general_profile_idc=1,
+        general_level_idc=120,
+    )
+    # general_profile_idc は 5 ビット幅 (0..=31)
+    with pytest.raises(ValueError, match="general_profile_idc"):
+        Mp4SampleEntryHev1(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            general_profile_idc=32,
+            general_level_idc=120,
+        )
+    # general_profile_space は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="general_profile_space"):
+        Mp4SampleEntryHev1(**base, general_profile_space=4)
+    # general_tier_flag は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="general_tier_flag"):
+        Mp4SampleEntryHev1(**base, general_tier_flag=2)
+    # general_constraint_indicator_flags は 48 ビット幅
+    with pytest.raises(ValueError, match="general_constraint_indicator_flags"):
+        Mp4SampleEntryHev1(**base, general_constraint_indicator_flags=1 << 48)
+    # chroma_format_idc は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="chroma_format_idc"):
+        Mp4SampleEntryHev1(**base, chroma_format_idc=4)
+    # bit_depth_luma_minus8 は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="bit_depth_luma_minus8"):
+        Mp4SampleEntryHev1(**base, bit_depth_luma_minus8=8)
+    # bit_depth_chroma_minus8 は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="bit_depth_chroma_minus8"):
+        Mp4SampleEntryHev1(**base, bit_depth_chroma_minus8=8)
+    # min_spatial_segmentation_idc は 12 ビット幅 (0..=0xFFF)
+    with pytest.raises(ValueError, match="min_spatial_segmentation_idc"):
+        Mp4SampleEntryHev1(**base, min_spatial_segmentation_idc=0x1000)
+    # parallelism_type は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="parallelism_type"):
+        Mp4SampleEntryHev1(**base, parallelism_type=4)
+    # constant_frame_rate は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="constant_frame_rate"):
+        Mp4SampleEntryHev1(**base, constant_frame_rate=4)
+    # num_temporal_layers は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="num_temporal_layers"):
+        Mp4SampleEntryHev1(**base, num_temporal_layers=8)
+    # temporal_id_nested は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="temporal_id_nested"):
+        Mp4SampleEntryHev1(**base, temporal_id_nested=2)
+    # length_size_minus_one は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="length_size_minus_one"):
+        Mp4SampleEntryHev1(**base, length_size_minus_one=4)
+    # nalu_types は 6 ビット幅 (0..=63)
+    with pytest.raises(ValueError, match="nalu_types"):
+        Mp4SampleEntryHev1(
+            **base,
+            nalu_types=[64],
+            nalu_data=[b"nalu"],
+        )
+
+
+def test_sample_entry_value_range_validation_hvc1():
+    """Hvc1 の値域検証
+
+    目的: hevc_pyclass! マクロで展開される Hvc1 にも Hev1 と同じ値域検証が
+          入っていることを確認する
+    検証: 上限超の値で ValueError が発火すること
+    """
+    with pytest.raises(ValueError, match="general_profile_idc"):
+        Mp4SampleEntryHvc1(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            general_profile_idc=32,
+            general_level_idc=120,
+        )
+
+
+def test_sample_entry_value_range_validation_av01():
+    """Av01 の値域検証
+
+    目的: av1C のビット幅を超える値が黙って切り捨て・隣接ビットを汚染しないことを
+          確認する
+    検証: 上限超の値で ValueError が発火すること
+    """
+    base = dict(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        seq_profile=0,
+        seq_level_idx_0=0,
+        config_obus=b"",
+    )
+    # seq_profile は 3 ビット幅 (0..=7)
+    with pytest.raises(ValueError, match="seq_profile"):
+        Mp4SampleEntryAv01(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            seq_profile=8,
+            seq_level_idx_0=0,
+            config_obus=b"",
+        )
+    # seq_level_idx_0 は 5 ビット幅 (0..=31)
+    with pytest.raises(ValueError, match="seq_level_idx_0"):
+        Mp4SampleEntryAv01(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            seq_profile=0,
+            seq_level_idx_0=32,
+            config_obus=b"",
+        )
+    # seq_tier_0 は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="seq_tier_0"):
+        Mp4SampleEntryAv01(**base, seq_tier_0=2)
+    # high_bitdepth は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="high_bitdepth"):
+        Mp4SampleEntryAv01(**base, high_bitdepth=2)
+    # twelve_bit は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="twelve_bit"):
+        Mp4SampleEntryAv01(**base, twelve_bit=2)
+    # monochrome は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="monochrome"):
+        Mp4SampleEntryAv01(**base, monochrome=2)
+    # chroma_subsampling_x / y は 1 ビット幅 (0..=1)
+    with pytest.raises(ValueError, match="chroma_subsampling_x"):
+        Mp4SampleEntryAv01(**base, chroma_subsampling_x=2)
+    with pytest.raises(ValueError, match="chroma_subsampling_y"):
+        Mp4SampleEntryAv01(**base, chroma_subsampling_y=2)
+    # chroma_sample_position は 2 ビット幅 (0..=3)
+    with pytest.raises(ValueError, match="chroma_sample_position"):
+        Mp4SampleEntryAv01(**base, chroma_sample_position=4)
+    # initial_presentation_delay_minus_one は 4 ビット幅 (0..=15)
+    with pytest.raises(ValueError, match="initial_presentation_delay_minus_one"):
+        Mp4SampleEntryAv01(
+            **base,
+            initial_presentation_delay_present=True,
+            initial_presentation_delay_minus_one=16,
+        )
+    # present=false でも構築時に弾かれる (コアに渡らない値も一貫して検証する)
+    with pytest.raises(ValueError, match="initial_presentation_delay_minus_one"):
+        Mp4SampleEntryAv01(
+            **base,
+            initial_presentation_delay_present=False,
+            initial_presentation_delay_minus_one=16,
+        )
+
+
+def test_sample_entry_value_range_boundaries_accepted():
+    """値域の上限ちょうどはエラーにならず roundtrip できる
+
+    目的: 値域検証の境界が「上限ちょうどは通過・上限 +1 は拒否」であることを
+          直接テストで固定する (PBT は境界値を必ず生成するとは限らないため)
+    検証: 上限ちょうどの値でコンストラクタが成功し、roundtrip で値が保持されること
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample_entry = Mp4SampleEntryVp08(
+        width=VIDEO_WIDTH,
+        height=VIDEO_HEIGHT,
+        bit_depth=12,
+        chroma_subsampling=7,  # 3 ビット幅の上限
+    )
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="video",
+            sample_entry=sample_entry,
+            keyframe=True,
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(0),
+        )
+    )
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    restored = next(Mp4FileDemuxer(output_buffer)).sample_entry
+    assert isinstance(restored, Mp4SampleEntryVp08)
+    assert restored.chroma_subsampling == 7, (
+        f"上限ちょうどの chroma_subsampling が保持されること (実際: {restored.chroma_subsampling})"
+    )
+
+
+def test_sample_entry_value_range_validation_mp4a():
+    """Mp4a の値域検証
+
+    目的: esds の buffer_size_db (24 ビット) を超える値が黙って破棄されないことを
+          確認する
+    検証: 上限超の値で ValueError が発火すること
+    """
+    with pytest.raises(ValueError, match="buffer_size_db"):
+        Mp4SampleEntryMp4a(
+            channel_count=2,
+            sample_rate=48000,
+            dec_specific_info=b"",
+            buffer_size_db=0x1000000,
+        )
+
+
 def test_video_sample_entry_avc1():
     """AVC1 (H.264) サンプルエントリーのテスト"""
     output_buffer = io.BytesIO()
