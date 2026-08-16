@@ -2,9 +2,9 @@
 
 - Priority: Low
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
-- Branch: feature/test-replace-try-except-with-pytest-raises
+- Branch: feature/fix-replace-try-except-with-pytest-raises
 - Polished: 2026-08-15
 
 ## 目的
@@ -46,6 +46,8 @@ except ValueError as error:
 
 ## 解決方法
 
-1. `tests/test_mp4.py` の `test_track_metadata_invalid_language` を `with pytest.raises(ValueError, match="invalid language code"):` 形式に書き換える
-2. CHANGES.md の `### misc` に追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-3. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `tests/test_mp4.py` の `test_track_metadata_invalid_language` を `with pytest.raises(ValueError, match="invalid language code"):` 形式に書き換えた (try/except + assert False パターンを除去)
+2. ブランチ名を `feature/fix-replace-try-except-with-pytest-raises` に変更した (当初の `feature/test-` は shiguredo-git の命名規則に該当しないため。0016 / 0037 の先例と同様)
+3. CHANGES.md の `### misc` に「[FIX] テストの try/except + assert False パターンを pytest.raises に置き換える」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+4. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (122 passed, 7 skipped) を確認した
+5. ruff の PT015 / PT017 / B011 の 3 ルールが解消されたことを確認した (静的解析有効化の別 issue の前提条件)
