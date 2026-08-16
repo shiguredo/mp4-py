@@ -57,6 +57,9 @@
 
 ### misc
 
+- [ADD] pytest の既定タイムアウトを pyproject.toml に設定する
+  - テストがハングした場合のセーフティネットとして 10 秒を設定する
+  - @voluntas
 - [UPDATE] Free-Threading 環境で input_stream 共有レースの回帰テストを追加する
   - @voluntas
 - [UPDATE] hypothesis を 6.158.1 に上げる
