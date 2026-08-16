@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-extract-bytes-silently-converts-int
 - Polished: 2026-08-15
@@ -48,10 +48,13 @@ Medium。
 
 ## 解決方法
 
-1. `src/lib.rs` の `extract_bytes` のフォールバック前に型チェックを追加し、`int` / `bool` を `TypeError` にする (エラーメッセージは英語で期待する型を明示)
-2. `tests/test_mp4.py` に以下を追加する:
-   - `Mp4MuxSample(data=12345)` と `Mp4MuxSample(data=True)` が `TypeError` になるテスト
-   - `Mp4MuxSample(data=[1,2,3])` が従来どおり動作するテスト (list[int] フォールバックの回帰防止。このテストは本 issue で追加する。テスト整備の別 issue (0045) では list[int] を担当外としている)
-   - `extract_bytes` を使う他のコンストラクタでも `TypeError` になるテスト: `Mp4SampleEntryAv01(config_obus=12345)` / `Mp4SampleEntryMp4a(dec_specific_info=12345)` / `Mp4SampleEntryFlac(streaminfo_data=12345)`、および `extract_bytes_list` 経路の `Mp4SampleEntryAvc1(sps_data=[12345])` / `Mp4SampleEntryHev1(nalu_data=[12345])`
-3. CHANGES.md の `## develop` に「[FIX] extract_bytes が int / bool を静かにゼロ埋めバイト列に変換しないようにする」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-4. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` の `extract_bytes` のフォールバック前に `is_instance_of::<PyInt>()` の型チェックを追加し、int / bool (bool は int のサブクラス) を `TypeError` にした
+   - エラーメッセージは英語で期待する型 (bytes / bytearray / memoryview、または 0-255 の int の iterable) と実際の型名を含む
+   - コメントに `bytes(12345)` が `b"\x00" * 12345` を返す仕様と、float / str は `bytes()` が元々 TypeError を返すためチェック不要な理由を明記した
+   - `list[int]` フォールバックは維持した
+2. `tests/test_mp4.py` に 3 テストを追加した:
+   - `test_mux_sample_rejects_int_data`: `Mp4MuxSample(data=12345)` / `data=True` が TypeError になることを検証
+   - `test_mux_sample_accepts_bytes_like_data`: `data=[1,2,3]` / `data=bytearray(...)` / `data=memoryview(...)` が従来どおり動作することを検証 (list[int] フォールバックと buffer protocol 経路の回帰防止)
+   - `test_extract_bytes_rejects_int_in_sample_entries`: `config_obus=12345` / `dec_specific_info=12345` / `streaminfo_data=12345` / `sps_data=[12345]` / `nalu_data=[12345]` が TypeError になることを検証 (extract_bytes / extract_bytes_list 経路)
+3. CHANGES.md の `## develop` に「[FIX] extract_bytes が int / bool を静かにゼロ埋めバイト列に変換しないようにする」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+4. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (118 passed, 7 skipped) を確認した
