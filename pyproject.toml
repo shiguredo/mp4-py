@@ -46,6 +46,10 @@ python-source = "python"
 python_files = ["test_*.py", "prop_*.py"]
 python_functions = ["test_*", "prop_*"]
 testpaths = ["tests"]
+# テストがハングした場合のセーフティネット
+# コマンドラインの --timeout / PYTEST_TIMEOUT 環境変数が ini の値より優先される
+# (CI は --timeout=30 を明示しているため 30 秒のまま)
+timeout = 10
 
 [tool.ruff]
 target-version = "py312"
