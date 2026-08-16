@@ -227,7 +227,7 @@ impl Mp4SampleEntryVp08 {
         transfer_characteristics = 1,
         matrix_coefficients = 1,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         width: u16,
         height: u16,
@@ -335,7 +335,7 @@ impl Mp4SampleEntryVp09 {
         transfer_characteristics = 1,
         matrix_coefficients = 1,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         width: u16,
         height: u16,
@@ -443,7 +443,7 @@ impl Mp4SampleEntryAvc1 {
         bit_depth_luma_minus8 = None,
         bit_depth_chroma_minus8 = None,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         width: u16,
@@ -684,7 +684,7 @@ macro_rules! hevc_pyclass {
                                 temporal_id_nested = 0,
                                 length_size_minus_one = 3,
                             ))]
-            #[allow(clippy::too_many_arguments)]
+            #[expect(clippy::too_many_arguments)]
             fn new(
                 py: Python<'_>,
                 width: u16,
@@ -881,7 +881,7 @@ impl Mp4SampleEntryAv01 {
         initial_presentation_delay_present = false,
         initial_presentation_delay_minus_one = 0,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         width: u16,
@@ -1099,7 +1099,7 @@ impl Mp4SampleEntryMp4a {
         max_bitrate = 0,
         avg_bitrate = 0,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         channel_count: u8,
@@ -1413,7 +1413,6 @@ impl Mp4SampleEntryTx3g {
         default_style = None,
         font_table = None,
     ))]
-    #[allow(clippy::too_many_arguments)]
     fn new(
         display_flags: u32,
         horizontal_justification: i8,
@@ -1749,7 +1748,7 @@ impl Mp4MuxSample {
         data,
         composition_time_offset = None,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         track_kind: String,
@@ -1836,7 +1835,7 @@ impl Mp4DemuxSample {
         input_stream,
         composition_time_offset = None,
     ))]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn new(
         track: Py<Mp4TrackInfo>,
         sample_entry: Option<Mp4SampleEntryAny>,
@@ -2293,7 +2292,7 @@ impl Mp4FileMuxer {
     // 期待されるため、キーワード呼び出しに配慮して leading underscore を外す。
     // Rust 側で参照を破棄したいだけなので `&Bound<'_, PyAny>` にして refcount 操作を避ける。
     #[pyo3(signature = (exc_type, exc_val, exc_tb))]
-    #[allow(unused_variables)]
+    #[expect(unused_variables)]
     fn __exit__(
         &self,
         py: Python<'_>,
@@ -2608,7 +2607,7 @@ impl Mp4FileDemuxer {
     // Muxer 側と揃えて、キーワード呼び出しに配慮して leading underscore を外し、
     // Bound を参照で受けて余分な refcount 操作を避ける。
     #[pyo3(signature = (exc_type, exc_val, exc_tb))]
-    #[allow(unused_variables)]
+    #[expect(unused_variables)]
     fn __exit__(
         &self,
         py: Python<'_>,

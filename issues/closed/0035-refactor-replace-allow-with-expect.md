@@ -2,7 +2,7 @@
 
 - Priority: Low
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/refactor-replace-allow-with-expect
 - Polished: 2026-08-15
@@ -42,9 +42,9 @@ Low。
 
 ## 解決方法
 
-1. `src/lib.rs` の `Mp4SampleEntryTx3g::new` の `#[allow(clippy::too_many_arguments)]` を削除する
-2. 残りの 10 箇所の `#[allow(...)]` を `#[expect(...)]` に置き換える
-3. `cargo clippy --all-targets -- -D warnings` で確認する
-4. `cargo build` で確認する
-5. CHANGES.md の `### misc` に「[UPDATE] `src/lib.rs` の `#[allow]` を `#[expect]` に置き換え、発火しない 1 箇所は削除する」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-6. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` の `Mp4SampleEntryTx3g::new` の `#[allow(clippy::too_many_arguments)]` を削除した (引数 7 個で lint 未発火のため)
+2. 残りの 10 箇所の `#[allow(...)]` を `#[expect(...)]` に置き換えた (too_many_arguments 8 箇所 + unused_variables 2 箇所。`hevc_pyclass!` マクロ内の 1 箇所を含む)
+3. `cargo clippy --all-targets -- -D warnings` が通ることを確認した (全 `#[expect]` が現に発火しており、`unfulfilled_lint_expectations` なし)
+4. `maturin develop --release` でビルドできることを確認した (cargo build 単体は extension-module feature のためこの環境ではリンクエラーになる既知の挙動)
+5. CHANGES.md の `### misc` に「[UPDATE] `src/lib.rs` の `#[allow]` を `#[expect]` に置き換え、発火しない 1 箇所は削除する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+6. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (119 passed, 7 skipped) を確認した
