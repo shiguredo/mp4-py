@@ -84,6 +84,9 @@
   - @voluntas
 - [UPDATE] Free-Threading 環境で input_stream 共有レースの回帰テストを追加する
   - @voluntas
+- [UPDATE] Free-Threading wheel の ubuntu / windows ビルドでテストを実行する
+  - 全プラットフォームで 3.14t の動作を検証する
+  - @voluntas
 - [UPDATE] hypothesis を 6.158.1 に上げる
   - @voluntas
 - [UPDATE] pytest を 9.1.1 に上げる
