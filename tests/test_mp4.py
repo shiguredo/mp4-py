@@ -1115,6 +1115,39 @@ def test_subtitle_sample_entry_stpp():
     assert demux_sample.data == sample_data
 
 
+def test_subtitle_sample_entry_stpp_rejects_null_characters():
+    """STPP の null 文字入り入力は ValueError になる (panic しない)
+
+    目的: Utf8String は null 文字を含む文字列を拒否する (None を返す) ため、
+          expect による panic ではなく ValueError として報告されることを確認する
+    検証: 3 フィールドそれぞれに null 文字入り入力を渡すと ValueError が発火すること
+    """
+    # namespace に null 文字を含む
+    with pytest.raises(ValueError, match="namespace must not contain null characters"):
+        Mp4SampleEntryStpp(namespace="http://www.w3.org/ns/ttml\u0000example")
+    # schema_location に null 文字を含む
+    with pytest.raises(ValueError, match="schema_location must not contain null characters"):
+        Mp4SampleEntryStpp(
+            namespace="http://www.w3.org/ns/ttml",
+            schema_location="http://www.w3.org/ns/ttml#profile\u0000",
+        )
+    # auxiliary_mime_types に null 文字を含む
+    with pytest.raises(ValueError, match="auxiliary_mime_types must not contain null characters"):
+        Mp4SampleEntryStpp(
+            namespace="http://www.w3.org/ns/ttml",
+            auxiliary_mime_types="application/ttml+xml\u0000",
+        )
+    # null 文字を含まない正規の入力は従来どおり構築できる
+    sample_entry = Mp4SampleEntryStpp(
+        namespace="http://www.w3.org/ns/ttml",
+        schema_location="http://www.w3.org/ns/ttml#profile",
+        auxiliary_mime_types="application/ttml+xml",
+    )
+    assert sample_entry.namespace == "http://www.w3.org/ns/ttml"
+    assert sample_entry.schema_location == "http://www.w3.org/ns/ttml#profile"
+    assert sample_entry.auxiliary_mime_types == "application/ttml+xml"
+
+
 def test_subtitle_sample_entry_wvtt():
     """WVTT (WebVTT 字幕) サンプルエントリーのテスト"""
     output_buffer = io.BytesIO()

@@ -61,6 +61,9 @@
   - ビット幅を超える値が黙って切り捨て・隣接ビットを汚染しないよう、各コンストラクタで ValueError を返す
   - ビット幅検証に加えて vpcC の bit_depth は意味論的値域 (8 / 10 / 12) も検証する
   - @voluntas
+- [FIX] Mp4SampleEntryStpp の null 文字入り入力で panic しないようにする
+  - コンストラクタで null 文字を検証し、ValueError を返すようにする
+  - @voluntas
 
 ### misc
 
