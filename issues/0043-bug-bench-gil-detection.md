@@ -2,7 +2,7 @@
 
 - Priority: Low
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-bench-gil-detection
 - Polished: 2026-08-15
@@ -45,7 +45,7 @@ print(f"Python: {sys.version.split()[0]}, GIL: {sys._is_gil_enabled()}")
 
 ## 解決方法
 
-1. `bench/bench_muxdemux.py` / `bench/bench_parallel.py` の `sys._is_gil_enabled()` 呼び出しを `hasattr` ガード付きに変更する
-2. Python 3.12 で実行してクラッシュせず `GIL: True` と表示されることを確認する (3.13+ は API が存在し挙動が変わらないため、3.12 の検証で足りる。実行には `maturin develop` 等での拡張モジュールのビルドが前提)
-3. `uv run ty check` で bench の diagnostics が解消していることを確認する
-4. CHANGES.md の `### misc` に追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
+1. `bench/bench_muxdemux.py` / `bench/bench_parallel.py` の `sys._is_gil_enabled()` 呼び出しを `hasattr` ガード付きに変更した (API が存在しない環境では GIL 有効が確定しているので True とみなす。`tests/test_free_threading.py` の `is_gil_enabled()` と同じ方針)
+2. Python 3.12 で実行してクラッシュせず `GIL: True` と表示されることを確認した (3.13+ / 3.14t は API が存在し挙動が変わらないことを実機 4 環境で確認)
+3. `uv run ty check` で bench の 2 diagnostics が解消されていることを確認した
+4. CHANGES.md の `### misc` に「[FIX] bench スクリプトの GIL 検出を Python 3.12 対応にする」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
