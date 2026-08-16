@@ -4,7 +4,7 @@
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
 - Model: Opus 4.7
-- Branch: feature/test-fuzzing-fix-exception-swallowing-and-rename
+- Branch: feature/fix-fuzzing-exception-swallowing
 - Polished: 2026-08-12
 
 ## 目的

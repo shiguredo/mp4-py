@@ -1,7 +1,8 @@
 """
-hypothesis を使った fuzzing テスト
+hypothesis を使った fuzzing テスト (PBT)
 
-ランダムなデータを入力してクラッシュしないことを確認する。
+ランダムなデータを入力して、想定内の破損データ由来エラーは許容し、
+想定外の例外はテスト失敗として検出することを確認する。
 """
 
 import io
@@ -16,55 +17,77 @@ from mp4 import (
     Mp4SampleEntryVp08,
 )
 
+# 破損データ由来で許容するエラーメッセージのホワイトリスト (小文字固定)。
+# 照合時は str(e).lower() と比較する。ホワイトリスト外の RuntimeError は
+# テスト失敗とする。
+# 注記: パースエラーの多くはバインディング層で StopIteration に変換され
+# Python 側に例外として届かないため、実際に発火するのは主に
+# sample.data アクセス時のサイズ検証エラーである。
+ALLOWED_ERROR_PATTERNS: list[str] = [
+    "corrupted data",
+    "too many iterations",
+    "required input",
+    "failed to read sample data",
+]
+
+# 有効な ftyp ボックス (size=20, major_brand="isom", compatible_brand="isom")
+VALID_FTYP_BOX: bytes = bytes(
+    [
+        0x00,
+        0x00,
+        0x00,
+        0x14,  # size = 20
+        0x66,
+        0x74,
+        0x79,
+        0x70,  # "ftyp"
+        0x69,
+        0x73,
+        0x6F,
+        0x6D,  # major_brand = "isom"
+        0x00,
+        0x00,
+        0x02,
+        0x00,  # minor_version
+        0x69,
+        0x73,
+        0x6F,
+        0x6D,  # compatible_brand = "isom"
+    ]
+)
+
 
 @given(data=st.binary(min_size=0, max_size=10000))
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_demuxer_random_bytes(data: bytes) -> None:
-    """ランダムなバイナリデータを Demuxer に渡してクラッシュしないことを確認"""
+def prop_fuzzing_demuxer_random_bytes(data: bytes) -> None:
+    """ランダムなバイナリデータを Demuxer に渡して想定外の例外が出ないことを確認"""
+    demuxer = Mp4FileDemuxer(io.BytesIO(data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(data=st.binary(min_size=0, max_size=10000))
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
-    """MP4 ヘッダー付きのランダムデータを Demuxer に渡してクラッシュしないことを確認"""
-    ftyp_header = bytes(
-        [
-            0x00,
-            0x00,
-            0x00,
-            0x14,
-            0x66,
-            0x74,
-            0x79,
-            0x70,
-            0x69,
-            0x73,
-            0x6F,
-            0x6D,
-            0x00,
-            0x00,
-            0x02,
-            0x00,
-            0x69,
-            0x73,
-            0x6F,
-            0x6D,
-        ]
-    )
-    mp4_data = ftyp_header + data
+def prop_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
+    """MP4 ヘッダー付きのランダムデータを Demuxer に渡して想定外の例外が出ないことを確認"""
+    mp4_data = VALID_FTYP_BOX + data
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
+            # sample.data は遅延読み込みのため、ここでアクセスして
+            # データサイズ検証の例外 (Sample data size too large /
+            # Failed to read sample data) を try の範囲で検出する
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -73,7 +96,7 @@ def test_fuzzing_demuxer_with_mp4_header(data: bytes) -> None:
     corruption_byte=st.integers(min_value=0, max_value=255),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_corrupted_mp4(
+def prop_fuzzing_corrupted_mp4(
     valid_mp4: bytes,
     corruption_offset: int,
     corruption_byte: int,
@@ -99,12 +122,14 @@ def test_fuzzing_corrupted_mp4(
         corruption_pos = corruption_offset % len(mp4_bytes)
         mp4_bytes[corruption_pos] = corruption_byte
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(bytes(mp4_bytes)))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(bytes(mp4_bytes)))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -113,7 +138,7 @@ def test_fuzzing_corrupted_mp4(
     box_data=st.binary(min_size=0, max_size=5000),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_random_box_structure(
+def prop_fuzzing_random_box_structure(
     box_type: bytes,
     box_size: int,
     box_data: bytes,
@@ -122,12 +147,14 @@ def test_fuzzing_random_box_structure(
     size_bytes = box_size.to_bytes(4, "big")
     mp4_data = size_bytes + box_type + box_data
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 # ボックスサイズの境界値
@@ -137,7 +164,7 @@ BOX_SIZE_BOUNDARY_VALUES = [
     7,  # ヘッダより小さい
     8,  # 最小の有効なボックス（ヘッダのみ）
     9,  # ヘッダ + 1 バイト
-    0xFFFFFFFF,  # 拡張サイズを示す特殊値
+    0xFFFFFFFF,  # 32 ビット size の最大値
 ]
 
 # MP4 の重要なボックスタイプ
@@ -169,7 +196,7 @@ MP4_BOX_TYPES = [
     box_data=st.binary(min_size=0, max_size=1000),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_box_size_boundaries(
+def prop_fuzzing_box_size_boundaries(
     box_type: bytes,
     box_size: int,
     box_data: bytes,
@@ -178,12 +205,14 @@ def test_fuzzing_box_size_boundaries(
     size_bytes = box_size.to_bytes(4, "big")
     mp4_data = size_bytes + box_type + box_data
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -192,7 +221,7 @@ def test_fuzzing_box_size_boundaries(
     box_data=st.binary(min_size=0, max_size=1000),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_extended_size_box(
+def prop_fuzzing_extended_size_box(
     box_type: bytes,
     extended_size: int,
     box_data: bytes,
@@ -203,31 +232,35 @@ def test_fuzzing_extended_size_box(
     extended_size_bytes = extended_size.to_bytes(8, "big")
     mp4_data = size_bytes + box_type + extended_size_bytes + box_data
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
     box_data=st.binary(min_size=0, max_size=5000),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_ftyp_with_random_body(box_data: bytes) -> None:
+def prop_fuzzing_ftyp_with_random_body(box_data: bytes) -> None:
     """ftyp ボックスにランダムなボディを付けてテスト"""
     # ftyp ボックスの構造: size(4) + type(4) + major_brand(4) + minor_version(4) + compatible_brands(...)
     size = 8 + len(box_data)
     size_bytes = size.to_bytes(4, "big")
     mp4_data = size_bytes + b"ftyp" + box_data
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -235,37 +268,11 @@ def test_fuzzing_ftyp_with_random_body(box_data: bytes) -> None:
     mdat_data=st.binary(min_size=0, max_size=5000),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_ftyp_moov_mdat_structure(
+def prop_fuzzing_ftyp_moov_mdat_structure(
     moov_data: bytes,
     mdat_data: bytes,
 ) -> None:
     """ftyp + moov + mdat 構造をテスト"""
-    # 有効な ftyp
-    ftyp = bytes(
-        [
-            0x00,
-            0x00,
-            0x00,
-            0x14,  # size = 20
-            0x66,
-            0x74,
-            0x79,
-            0x70,  # "ftyp"
-            0x69,
-            0x73,
-            0x6F,
-            0x6D,  # major_brand = "isom"
-            0x00,
-            0x00,
-            0x02,
-            0x00,  # minor_version
-            0x69,
-            0x73,
-            0x6F,
-            0x6D,  # compatible_brand = "isom"
-        ]
-    )
-
     # ランダムな moov
     moov_size = (8 + len(moov_data)).to_bytes(4, "big")
     moov = moov_size + b"moov" + moov_data
@@ -274,14 +281,16 @@ def test_fuzzing_ftyp_moov_mdat_structure(
     mdat_size = (8 + len(mdat_data)).to_bytes(4, "big")
     mdat = mdat_size + b"mdat" + mdat_data
 
-    mp4_data = ftyp + moov + mdat
+    mp4_data = VALID_FTYP_BOX + moov + mdat
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -289,7 +298,7 @@ def test_fuzzing_ftyp_moov_mdat_structure(
     data=st.data(),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
+def prop_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
     """ネストしたボックス構造をランダムに生成"""
     mp4_data = b""
 
@@ -300,12 +309,14 @@ def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
         size_bytes = box_size.to_bytes(4, "big")
         mp4_data += size_bytes + box_type + box_content
 
+    demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
     try:
-        demuxer = Mp4FileDemuxer(io.BytesIO(mp4_data))
         for sample in demuxer:
             _ = sample.data
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    except RuntimeError as e:
+        assert any(p in str(e).lower() for p in ALLOWED_ERROR_PATTERNS), (
+            f"予期しないエラーメッセージ: {e}"
+        )
 
 
 @given(
@@ -313,36 +324,38 @@ def test_fuzzing_nested_boxes(num_boxes: int, data: st.DataObject) -> None:
     data=st.data(),
 )
 @settings(max_examples=1000, deadline=None)
-def test_fuzzing_muxer_random_data(sample_count: int, data: st.DataObject) -> None:
-    """Muxer にランダムなサンプルデータを渡してクラッシュしないことを確認"""
+def prop_fuzzing_muxer_random_data(sample_count: int, data: st.DataObject) -> None:
+    """Muxer にランダムなサンプルデータを渡して有効入力で例外が出ないことを確認"""
     output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
 
-    try:
-        muxer = Mp4FileMuxer(output_buffer)
+    # timescale はテスト全体で 1 回だけ生成し、全サンプルで共通使用する
+    # (サンプル間で timescale が異なると muxer が Timescale mismatch で失敗するため)
+    timescale = data.draw(st.integers(min_value=1, max_value=1000000))
 
-        for _ in range(sample_count):
-            sample_entry = Mp4SampleEntryVp08(
-                width=data.draw(st.integers(min_value=1, max_value=4096)),
-                height=data.draw(st.integers(min_value=1, max_value=4096)),
-            )
-            sample_data = data.draw(st.binary(min_size=1, max_size=5000))
+    for i in range(sample_count):
+        sample_entry = Mp4SampleEntryVp08(
+            width=data.draw(st.integers(min_value=1, max_value=4096)),
+            height=data.draw(st.integers(min_value=1, max_value=4096)),
+        )
+        sample_data = data.draw(st.binary(min_size=1, max_size=5000))
 
-            mux_sample = Mp4MuxSample(
-                track_kind="video",
-                sample_entry=sample_entry,
-                keyframe=data.draw(st.booleans()),
-                timescale=data.draw(st.integers(min_value=1, max_value=1000000)),
-                duration=data.draw(st.integers(min_value=1, max_value=1000000)),
-                data=sample_data,
-            )
-            muxer.append_sample(mux_sample)
+        mux_sample = Mp4MuxSample(
+            track_kind="video",
+            sample_entry=sample_entry,
+            # 先頭サンプルは必ず keyframe にする (sync samples が必要なため)
+            keyframe=(i == 0) or data.draw(st.booleans()),
+            timescale=timescale,
+            duration=data.draw(st.integers(min_value=1, max_value=1000000)),
+            data=sample_data,
+        )
+        muxer.append_sample(mux_sample)
 
-        muxer.finalize()
+    muxer.finalize()
 
-        output_buffer.seek(0)
-        demuxer = Mp4FileDemuxer(output_buffer)
-        demuxed = list(demuxer)
-        assert len(demuxed) == sample_count
-
-    except (ValueError, RuntimeError, StopIteration):
-        pass
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demuxed = list(demuxer)
+    assert len(demuxed) == sample_count, (
+        f"demux したサンプル数が一致すること (実際: {len(demuxed)})"
+    )
