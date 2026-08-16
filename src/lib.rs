@@ -139,9 +139,11 @@ fn default_audio(channel_count: u8, sample_rate: u16, sample_size: u16) -> Audio
     }
 }
 
-// Python の bytes-like (bytes / bytearray / memoryview / buffer protocol 対応) を Vec<u8> に変換する。
-// nanobind 版は Python の builtins.bytes(iterable) にフォールバックしていたが、
-// PyO3 0.29 では PyBuffer 経由でゼロ経路が短くなる。
+// Python の bytes-like (bytes / bytearray / memoryview / buffer protocol 対応)、
+// または 0-255 の int の iterable (list[int] 等) を Vec<u8> に変換する。
+// 型ミスの int / bool は TypeError を返す。nanobind 版は Python の
+// builtins.bytes(iterable) にフォールバックしていたが、PyO3 0.29 では PyBuffer
+// 経由の方が変換経路が短い。
 fn extract_bytes(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     // 高速パス: すでに bytes ならスライスをそのままコピー
     if let Ok(b) = obj.cast::<PyBytes>() {
@@ -150,6 +152,17 @@ fn extract_bytes(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     // 汎用パス: buffer protocol 経由 (bytearray / memoryview / array.array 等)
     if let Ok(buf) = pyo3::buffer::PyBuffer::<u8>::get(obj) {
         return buf.to_vec(py);
+    }
+    // bytes(12345) が b"\x00" * 12345 を返す仕様をそのまま通さないよう、
+    // int / bool は型ミスとして TypeError にする。bool は int のサブクラスなので
+    // PyInt チェックで捕捉される (分岐を分ける必要はない)。int サブクラス
+    // (__bytes__ の有無に関わらず) も捕捉されるが、型ミスとして扱う方針どおり。
+    // float / str は bytes() が元々 TypeError を返すためチェック不要。
+    if obj.is_instance_of::<pyo3::types::PyInt>() {
+        let type_name = obj.get_type().name()?;
+        return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+            "expected bytes, bytearray, memoryview or an iterable of int (0-255), got {type_name}"
+        )));
     }
     // 最終フォールバック: Python 側の bytes() で変換 (list[int] 等)
     let builtins = py.import("builtins")?;
