@@ -102,6 +102,9 @@
   - `tests/test_fuzzing.py` を `tests/prop_fuzzing.py` にリネームする
   - `pytest.raises(Exception)` を `pytest.raises(RuntimeError, match="finalized")` に修正する
   - @voluntas
+- [FIX] bench スクリプトの GIL 検出を Python 3.12 対応にする
+  - sys._is_gil_enabled が存在しない環境では GIL 有効とみなす
+  - @voluntas
 
 ## 2026.1.0
 
