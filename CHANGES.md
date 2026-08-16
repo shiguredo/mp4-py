@@ -105,6 +105,8 @@
 - [FIX] bench スクリプトの GIL 検出を Python 3.12 対応にする
   - sys._is_gil_enabled が存在しない環境では GIL 有効とみなす
   - @voluntas
+- [FIX] テストの try/except + assert False パターンを pytest.raises に置き換える
+  - @voluntas
 
 ## 2026.1.0
 

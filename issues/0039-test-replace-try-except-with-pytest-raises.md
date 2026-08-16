@@ -4,7 +4,7 @@
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
 - Model: Opus 4.7
-- Branch: feature/test-replace-try-except-with-pytest-raises
+- Branch: feature/fix-replace-try-except-with-pytest-raises
 - Polished: 2026-08-15
 
 ## 目的

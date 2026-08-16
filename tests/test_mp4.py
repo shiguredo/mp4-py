@@ -1530,11 +1530,8 @@ def test_track_metadata_invalid_language():
         audio_track=Mp4TrackMetadata(language="JPN", name="Invalid"),
     )
 
-    try:
+    with pytest.raises(ValueError, match="invalid language code"):
         Mp4FileMuxer(io.BytesIO(), options=options)
-        assert False, "不正な言語コードがエラーにならない"
-    except ValueError as error:
-        assert "invalid language code" in str(error)
 
 
 def test_estimate_maximum_moov_box_size_variadic():
