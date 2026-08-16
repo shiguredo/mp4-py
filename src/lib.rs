@@ -1264,12 +1264,30 @@ struct Mp4SampleEntryStpp {
 impl Mp4SampleEntryStpp {
     #[new]
     #[pyo3(signature = (namespace, schema_location = "", auxiliary_mime_types = ""))]
-    fn new(namespace: &str, schema_location: &str, auxiliary_mime_types: &str) -> Self {
-        Self {
+    fn new(namespace: &str, schema_location: &str, auxiliary_mime_types: &str) -> PyResult<Self> {
+        // Utf8String は null を含む文字列を拒否する (None を返す) ため、
+        // expect で panic に到達しないよう構築時に検証する。
+        // Mp4TrackMetadata::to_core と同じ文言形式を使う。
+        if namespace.contains('\0') {
+            return Err(PyValueError::new_err(
+                "namespace must not contain null characters",
+            ));
+        }
+        if schema_location.contains('\0') {
+            return Err(PyValueError::new_err(
+                "schema_location must not contain null characters",
+            ));
+        }
+        if auxiliary_mime_types.contains('\0') {
+            return Err(PyValueError::new_err(
+                "auxiliary_mime_types must not contain null characters",
+            ));
+        }
+        Ok(Self {
             namespace: namespace.to_owned(),
             schema_location: schema_location.to_owned(),
             auxiliary_mime_types: auxiliary_mime_types.to_owned(),
-        }
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -1283,7 +1301,10 @@ impl Mp4SampleEntryStpp {
 impl Mp4SampleEntryStpp {
     fn to_sample_entry(&self) -> SampleEntry {
         // Utf8String は null を含む文字列を拒否するが、Python 側の String は
-        // null を含む Unicode 文字列を保持できるため、ここで変換を検証する
+        // null を含む Unicode 文字列を保持できるため、ここで変換すると panic し得る。
+        // ただし new で null 文字を検証済みであり、from_box (demux 側) はコアの
+        // Utf8String が null で読み止めるため null 文字入りにはならない。
+        // いずれの経路でも expect は panic しない。
         let namespace =
             Utf8String::new(&self.namespace).expect("namespace must not contain null characters");
         let schema_location = Utf8String::new(&self.schema_location)
