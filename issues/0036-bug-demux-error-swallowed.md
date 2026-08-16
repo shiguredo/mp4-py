@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-demux-error-swallowed
 - Polished: 2026-08-15
@@ -56,10 +56,18 @@ Medium。
 
 ## 解決方法
 
-1. `src/lib.rs` の `ensure_tracks` / `__next__` の `Err(_)` アームを、エラー種別を確認して `RuntimeError` を返す形に変更する (メッセージはコアの Display を `mp4 error: ...` 形式で伝える)
-2. エラーを返したら `ended = true` + `tracks_cache = Some(Vec::new())` を設定して以後 `StopIteration` / 空リストにする
-3. README.md に fMP4 非対応を明記する
-4. `tests/test_mp4.py` に、32 バイト以上の不正データ (例: ftyp 型不一致になるデータ) で `RuntimeError` になること、およびエラー後の `tracks` が空リスト・反復が `StopIteration` で終わることを検証するテストを追加する (既存の `test_demuxer_with_invalid_data` は EOF 経路のため変更不要)
-5. fMP4 対応は別 issue (0047) に分離済みのため、本 issue で対応しない
-6. CHANGES.md の `## develop` に「[FIX] Demux のパースエラーを Python 側に報告する」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-7. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` の `ensure_tracks` / `__next__` の `Err(_)` アームを `Err(err)` に変更し、回復不能なパースエラー (DecodeError / SampleTableError / InvalidState) を `map_err` で `RuntimeError` (`mp4 error: ...` 形式) として Python 側に報告するようにした
+2. エラー後の状態を `set_fatal` ヘルパーで統一した (`tracks_cache = Some(Vec::new())` + `ended = true`。エラー後に tracks がエラー前のトラック情報を返さないようにするため)
+3. `feed_required_input` のエラー (破損データ検出・I/O エラー) も `?` で伝播せず、`set_fatal` で状態を統一してから返すようにした
+4. README.md に以下を明記した:
+   - 破損 MP4 データはパースエラーを `RuntimeError` として報告すること
+   - moov 発見前に EOF に達するファイルはエラーにならず「トラック 0 本の正常終了」になること
+   - fMP4 非対応 (stbl が空の典型的な init segment ではエラーなく「サンプル 0 個の正常終了」になること)
+5. `tests/test_mp4.py` に 4 テストを追加した:
+   - `test_demuxer_reports_parse_error`: 32 バイト以上の不正データで tracks / 反復の両方が RuntimeError になり、エラー後の tracks が空リスト・以後の反復が StopIteration になることを検証
+   - `test_demuxer_reports_sample_table_error`: stsc の first_chunk 改変で SampleTableError が RuntimeError になることを検証
+   - `test_demuxer_feed_error_state_after_error`: feed 経路のエラー (ループ上限超過) 後も状態遷移が統一されることを検証
+   - `test_demuxer_with_invalid_data` の docstring を更新 (EOF 経路はエラーにならない仕様を明記)
+6. `tests/prop_fuzzing.py` のホワイトリストに `failed to decode mp4 box` / `sample table error` を追加した (表面化したパースエラーを許容するため)
+7. CHANGES.md の `## develop` に「[FIX] Demux のパースエラーを Python 側に報告する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+8. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (122 passed, 7 skipped) を確認した
