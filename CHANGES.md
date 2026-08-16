@@ -57,6 +57,10 @@
 - [FIX] finalize 後の append_sample が出力ファイルを破壊しないようにする
   - write に進む前に finalized チェックでエラーを返し、mdat ペイロードの上書きとロールバックによる truncate を防ぐ
   - @voluntas
+- [FIX] SampleEntry コンストラクタの値域検証を追加する
+  - ビット幅を超える値が黙って切り捨て・隣接ビットを汚染しないよう、各コンストラクタで ValueError を返す
+  - ビット幅検証に加えて vpcC の bit_depth は意味論的値域 (8 / 10 / 12) も検証する
+  - @voluntas
 
 ### misc
 

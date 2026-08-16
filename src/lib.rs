@@ -82,6 +82,41 @@ fn str_to_track_kind(s: &str) -> PyResult<TrackKind> {
     }
 }
 
+// ビット幅を超える値がコアの Uint で黙って切り捨て・隣接ビットを汚染しないよう、
+// SampleEntry コンストラクタで値域を検証するヘルパー。
+// max は 2^bits - 1 (例: 4 ビットなら 0xF) を呼び出し側が指定する。
+fn validate_range<T>(value: T, max: T, name: &str) -> PyResult<()>
+where
+    T: PartialOrd + std::fmt::LowerHex,
+{
+    if value > max {
+        return Err(PyValueError::new_err(format!(
+            "{name} must be 0..=0x{max:x}, got 0x{value:x}"
+        )));
+    }
+    Ok(())
+}
+
+// Vp08 / Vp09 共通の vpcC 値域検証 (VpccBox のフィールド定義を一次資料とする)。
+// ビット幅超の値は Uint::to_bits のシフトで次のいずれかの被害を起こす:
+// - シフト結果が保持型からあふれる場合は折り返して黙って別の値に化ける
+//   (例: bit_depth=17 は 17 << 4 が u8 をあふれ 16 になる)
+// - あふれない場合は隣接フィールドのビット位置に混入する
+//   (例: chroma_subsampling=8 は 8 << 1 が bit_depth の最下位ビットと OR される)
+fn validate_vpcc_fields(bit_depth: u8, chroma_subsampling: u8) -> PyResult<()> {
+    // vpcC のビット幅 (4 ビット / 3 ビット) を超える値を弾く
+    validate_range(bit_depth, 0xF, "bit_depth")?;
+    validate_range(chroma_subsampling, 0x7, "chroma_subsampling")?;
+    // 意味論的検証は 10 進表記 (8 / 10 / 12 の列挙との整合のため)。
+    // vpcC の bit_depth は 8 / 10 / 12 のみ (コアの doc コメントに明記)
+    if !matches!(bit_depth, 8 | 10 | 12) {
+        return Err(PyValueError::new_err(format!(
+            "bit_depth must be 8, 10 or 12, got {bit_depth}"
+        )));
+    }
+    Ok(())
+}
+
 fn default_visual(width: u16, height: u16) -> VisualSampleEntryFields {
     VisualSampleEntryFields {
         data_reference_index: VisualSampleEntryFields::DEFAULT_DATA_REFERENCE_INDEX,
@@ -189,8 +224,9 @@ impl Mp4SampleEntryVp08 {
         colour_primaries: u8,
         transfer_characteristics: u8,
         matrix_coefficients: u8,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        validate_vpcc_fields(bit_depth, chroma_subsampling)?;
+        Ok(Self {
             width,
             height,
             bit_depth,
@@ -199,7 +235,7 @@ impl Mp4SampleEntryVp08 {
             colour_primaries,
             transfer_characteristics,
             matrix_coefficients,
-        }
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -298,8 +334,9 @@ impl Mp4SampleEntryVp09 {
         colour_primaries: u8,
         transfer_characteristics: u8,
         matrix_coefficients: u8,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        validate_vpcc_fields(bit_depth, chroma_subsampling)?;
+        Ok(Self {
             width,
             height,
             profile,
@@ -310,7 +347,7 @@ impl Mp4SampleEntryVp09 {
             colour_primaries,
             transfer_characteristics,
             matrix_coefficients,
-        }
+        })
     }
 }
 
@@ -416,6 +453,17 @@ impl Mp4SampleEntryAvc1 {
             .map(|o| extract_bytes_list(py, o))
             .transpose()?
             .unwrap_or_default();
+        // avcC のビット幅 (2 ビット / 2 ビット / 3 ビット / 3 ビット) を超える値を弾く
+        validate_range(length_size_minus_one, 0x3, "length_size_minus_one")?;
+        if let Some(v) = chroma_format {
+            validate_range(v, 0x3, "chroma_format")?;
+        }
+        if let Some(v) = bit_depth_luma_minus8 {
+            validate_range(v, 0x7, "bit_depth_luma_minus8")?;
+        }
+        if let Some(v) = bit_depth_chroma_minus8 {
+            validate_range(v, 0x7, "bit_depth_chroma_minus8")?;
+        }
         Ok(Self {
             width,
             height,
@@ -666,6 +714,30 @@ macro_rules! hevc_pyclass {
                         "nalu_types and nalu_data must have the same length",
                     ));
                 }
+                // hvcC のビット幅を超える値が Uint で黙って切り捨て・
+                // 隣接ビットを汚染しないよう、コンストラクタで検証する。
+                validate_range(general_profile_space, 0x3, "general_profile_space")?;
+                validate_range(general_tier_flag, 0x1, "general_tier_flag")?;
+                validate_range(general_profile_idc, 0x1F, "general_profile_idc")?;
+                validate_range(
+                    general_constraint_indicator_flags,
+                    0xFFFFFFFFFFFF,
+                    "general_constraint_indicator_flags",
+                )?;
+                validate_range(chroma_format_idc, 0x3, "chroma_format_idc")?;
+                validate_range(bit_depth_luma_minus8, 0x7, "bit_depth_luma_minus8")?;
+                validate_range(bit_depth_chroma_minus8, 0x7, "bit_depth_chroma_minus8")?;
+                validate_range(min_spatial_segmentation_idc, 0xFFF, "min_spatial_segmentation_idc")?;
+                validate_range(parallelism_type, 0x3, "parallelism_type")?;
+                validate_range(constant_frame_rate, 0x3, "constant_frame_rate")?;
+                validate_range(num_temporal_layers, 0x7, "num_temporal_layers")?;
+                validate_range(temporal_id_nested, 0x1, "temporal_id_nested")?;
+                validate_range(length_size_minus_one, 0x3, "length_size_minus_one")?;
+                for (i, &t) in types.iter().enumerate() {
+                    // nal_unit_type は 6 ビット。超過値は上位ビット (reserved /
+                    // array_completeness 相当) に混入して誤デコードされる
+                    validate_range(t, 0x3F, &format!("nalu_types[{i}]"))?;
+                }
                 Ok(Self {
                     inner: HevcCommon {
                         width,
@@ -814,6 +886,23 @@ impl Mp4SampleEntryAv01 {
         initial_presentation_delay_present: bool,
         initial_presentation_delay_minus_one: u8,
     ) -> PyResult<Self> {
+        // av1C のビット幅 (3 / 5 / 1 / 1 / 1 / 1 / 1 / 1 / 2 / 4 ビット) を超える値が
+        // Uint で黙って切り捨て・隣接ビットを汚染しないよう、コンストラクタで検証する。
+        validate_range(seq_profile, 0x7, "seq_profile")?;
+        validate_range(seq_level_idx_0, 0x1F, "seq_level_idx_0")?;
+        validate_range(seq_tier_0, 0x1, "seq_tier_0")?;
+        validate_range(high_bitdepth, 0x1, "high_bitdepth")?;
+        validate_range(twelve_bit, 0x1, "twelve_bit")?;
+        validate_range(monochrome, 0x1, "monochrome")?;
+        validate_range(chroma_subsampling_x, 0x1, "chroma_subsampling_x")?;
+        validate_range(chroma_subsampling_y, 0x1, "chroma_subsampling_y")?;
+        validate_range(chroma_sample_position, 0x3, "chroma_sample_position")?;
+        // present が false ならコアに渡らないが、不正値は構築時に弾く (一貫した値域保証)
+        validate_range(
+            initial_presentation_delay_minus_one,
+            0xF,
+            "initial_presentation_delay_minus_one",
+        )?;
         Ok(Self {
             width,
             height,
@@ -1008,6 +1097,9 @@ impl Mp4SampleEntryMp4a {
         max_bitrate: u32,
         avg_bitrate: u32,
     ) -> PyResult<Self> {
+        // esds の DecoderConfigDescriptor.buffer_size_db は 24 ビット。
+        // 超過時は上位 8 ビットが黙って破棄されるため、コンストラクタで検証する。
+        validate_range(buffer_size_db, 0xFFFFFF, "buffer_size_db")?;
         Ok(Self {
             channel_count,
             sample_rate,

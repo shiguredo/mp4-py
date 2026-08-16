@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-sample-entry-value-range-validation
 - Polished: 2026-08-15
@@ -67,8 +67,15 @@ High。
 
 ## 解決方法
 
-1. `src/lib.rs` の各 SampleEntry コンストラクタに値域検証を追加する (検証対象は「現状」セクションの列挙のとおり。Hev1/Hvc1 は `nalu_types` を含む)
-2. `tests/test_mp4.py` に境界値 (上限 +1) で `ValueError` になることを検証するテストを追加する
-3. `tests/conftest.py` のストラテジーに、roundtrip が成立するフィールドの上限値を含めて PBT でエンコード → デコード roundtrip が成立することを確認する (avc1 の `chroma_format` 等はプロファイル追加と組み合わせる)
-4. CHANGES.md の `## develop` に「[FIX] SampleEntry コンストラクタの値域検証を追加する」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` にジェネリックな値域検証ヘルパー `validate_range<T>` (PartialOrd + LowerHex) を追加し、エラーメッセージは 16 進表記 (例: `chroma_subsampling must be 0..=0x7, got 0x8`) に統一した
+2. `src/lib.rs` に Vp08 / Vp09 共通の `validate_vpcc_fields` を追加した (ビット幅検証 + bit_depth の意味論的値域 8/10/12 検証)
+3. 各 SampleEntry コンストラクタに値域検証を追加した (検証対象はコアのビット幅を一次資料とする):
+   - `Mp4SampleEntryVp08::new` / `Mp4SampleEntryVp09::new`: `validate_vpcc_fields` (bit_depth 4 ビット + 意味論、chroma_subsampling 3 ビット)
+   - `Mp4SampleEntryAvc1::new`: length_size_minus_one (2 ビット) / chroma_format (2 ビット) / bit_depth_luma_minus8 (3 ビット) / bit_depth_chroma_minus8 (3 ビット)
+   - `Mp4SampleEntryHev1::new` / `Mp4SampleEntryHvc1::new`: general_profile_space (2 ビット) / general_tier_flag (1 ビット) / general_profile_idc (5 ビット) / general_constraint_indicator_flags (48 ビット) / min_spatial_segmentation_idc (12 ビット) / parallelism_type (2 ビット) / chroma_format_idc (2 ビット) / bit_depth_luma_minus8 (3 ビット) / bit_depth_chroma_minus8 (3 ビット) / constant_frame_rate (2 ビット) / num_temporal_layers (3 ビット) / temporal_id_nested (1 ビット) / length_size_minus_one (2 ビット) / nalu_types (6 ビット)
+   - `Mp4SampleEntryAv01::new`: seq_profile (3 ビット) / seq_level_idx_0 (5 ビット) / seq_tier_0 (1 ビット) / high_bitdepth (1 ビット) / twelve_bit (1 ビット) / monochrome (1 ビット) / chroma_subsampling_x (1 ビット) / chroma_subsampling_y (1 ビット) / chroma_sample_position (2 ビット) / initial_presentation_delay_minus_one (4 ビット。present の値に関わらず常時検証)
+   - `Mp4SampleEntryMp4a::new`: buffer_size_db (24 ビット)
+4. `tests/test_mp4.py` に境界値テスト 7 件を追加した (各コンストラクタのビット幅超・意味論的値域超の値で ValueError になること、上限ちょうどの値で roundtrip が成立すること、エラーメッセージの 16 進表記を完全一致で固定)
+5. `tests/conftest.py` のストラテジーを拡張した (chroma_subsampling 0..=7、bit_depth_luma_minus8 / bit_depth_chroma_minus8 0..=7、general_profile_idc 1..=31。いずれも roundtrip が成立する範囲)
+6. CHANGES.md の `## develop` に「[FIX] SampleEntry コンストラクタの値域検証を追加する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+7. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (114 passed, 7 skipped) を確認した
