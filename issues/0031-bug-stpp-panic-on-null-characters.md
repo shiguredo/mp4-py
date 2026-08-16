@@ -2,7 +2,7 @@
 
 - Priority: High
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/fix-stpp-panic-on-null-characters
 - Polished: 2026-08-15
@@ -50,8 +50,12 @@ null 文字入り入力のテストは存在しない (正規入力のテスト 
 
 ## 解決方法
 
-1. `src/lib.rs` の `Mp4SampleEntryStpp::new` に 3 フィールドの null 文字検証を追加し、`PyValueError` を返す
-2. `to_sample_entry` の `expect` に「new で検証済みのため到達しない」旨のコメントを追記する
-3. `tests/test_mp4.py` に 3 フィールドそれぞれの null 文字入り入力で `ValueError` になるテストを追加する
-4. CHANGES.md の `## develop` に「[FIX] Mp4SampleEntryStpp の null 文字入り入力で panic しないようにする」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+1. `src/lib.rs` の `Mp4SampleEntryStpp::new` に 3 フィールド (namespace / schema_location / auxiliary_mime_types) の null 文字検証 (`contains('\0')`) を追加し、`PyValueError` (`... must not contain null characters` 形式) を返すようにした
+   - 検証条件はコアの `Utf8String::new` の拒否条件 (null バイト) と完全に一致する
+   - エラーメッセージは `Mp4TrackMetadata::to_core` と同じ文言形式
+2. `to_sample_entry` の expect にコメントを追記した (new で検証済み、from_box はコアの Utf8String が null で読み止めるため null 文字入りにはならない。いずれの経路でも expect は panic しない)
+3. `tests/test_mp4.py` に `test_subtitle_sample_entry_stpp_rejects_null_characters` を追加した:
+   - 3 フィールドそれぞれの null 文字入り入力で `ValueError` になることを検証
+   - null 文字を含まない正規の入力が従来どおり構築できることを検証 (3 フィールドの getter)
+4. CHANGES.md の `## develop` に「[FIX] Mp4SampleEntryStpp の null 文字入り入力で panic しないようにする」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (115 passed, 7 skipped) を確認した
