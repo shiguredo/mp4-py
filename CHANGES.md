@@ -73,6 +73,9 @@
 - [ADD] pytest の既定タイムアウトを pyproject.toml に設定する
   - テストがハングした場合のセーフティネットとして 10 秒を設定する
   - @voluntas
+- [UPDATE] `src/lib.rs` の `#[allow]` を `#[expect]` に置き換え、発火しない 1 箇所は削除する
+  - lint が発火しなくなったときに検出できるようにする
+  - @voluntas
 - [UPDATE] `Mp4DemuxSample` に frozen を付与する
   - CODEBASE.md の pyclass 規約 (Muxer / Demuxer / DemuxSample は frozen) に準拠する
   - @voluntas
