@@ -2061,6 +2061,17 @@ impl Mp4FileMuxer {
         if state.closed {
             return Err(PyRuntimeError::new_err("muxer is closed"));
         }
+        // finalize 済みの場合は write に進む前にエラーを返す。
+        // コアの FinalizedBoxes::offset_and_bytes_pairs は mdat ヘッダーを最後に
+        // 返すため、finalize 直後のストリーム位置は mdat ヘッダー末尾になる。
+        // ここに write すると mdat ペイロード先頭を上書きし、その後のロールバック
+        // (truncate) でファイル全体が破壊されるため。文言はコアの
+        // MuxError::AlreadyFinalized と揃える。
+        if state.finalized {
+            return Err(PyRuntimeError::new_err(
+                "Muxer has already been finalized",
+            ));
+        }
         let core = state
             .core
             .as_mut()

@@ -54,6 +54,9 @@
 - [FIX] timescale=0 の Mp4TrackInfo を ValueError で弾く
   - timestamp_seconds / duration_seconds の 0 除算による inf / nan を構造的に排除する
   - @voluntas
+- [FIX] finalize 後の append_sample が出力ファイルを破壊しないようにする
+  - write に進む前に finalized チェックでエラーを返し、mdat ペイロードの上書きとロールバックによる truncate を防ぐ
+  - @voluntas
 
 ### misc
 
