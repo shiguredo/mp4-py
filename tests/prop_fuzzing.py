@@ -20,14 +20,16 @@ from mp4 import (
 # 破損データ由来で許容するエラーメッセージのホワイトリスト (小文字固定)。
 # 照合時は str(e).lower() と比較する。ホワイトリスト外の RuntimeError は
 # テスト失敗とする。
-# 注記: パースエラーの多くはバインディング層で StopIteration に変換され
-# Python 側に例外として届かないため、実際に発火するのは主に
-# sample.data アクセス時のサイズ検証エラーである。
+# パースエラーは RuntimeError として Python 側に届く (Demux のパースエラーを
+# Python 側に報告する対応) ため、コア由来のパースエラーメッセージ
+# (Failed to decode MP4 box / Sample table error) もホワイトリストに含める。
 ALLOWED_ERROR_PATTERNS: list[str] = [
     "corrupted data",
     "too many iterations",
     "required input",
     "failed to read sample data",
+    "failed to decode mp4 box",
+    "sample table error",
 ]
 
 # 有効な ftyp ボックス (size=20, major_brand="isom", compatible_brand="isom")

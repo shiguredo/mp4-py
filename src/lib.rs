@@ -2344,6 +2344,14 @@ struct Mp4FileDemuxer {
 }
 
 impl Mp4FileDemuxer {
+    // 回復不能なエラー後の状態を統一する。tracks_cache を空にすることで、
+    // エラー後に tracks がエラー前のトラック情報を返さないようにし、
+    // 以後の反復を StopIteration で終了させる。
+    fn set_fatal(state: &mut DemuxerState) {
+        state.tracks_cache = Some(Vec::new());
+        state.ended = true;
+    }
+
     // 必要なデータをストリームから供給する。真の EOF に達したら true を返す。
     // lock 済みの state を受け取る (lock 中に IO する)。
     // stream_lock は内部で個別に取得し、sample.data と直列化する。
@@ -2420,16 +2428,26 @@ impl Mp4FileDemuxer {
                     return Ok(());
                 }
                 Err(DemuxError::InputRequired(_)) => {
-                    if self.feed_required_input(py, state)? {
-                        state.tracks_cache = Some(Vec::new());
-                        state.ended = true;
-                        return Ok(());
+                    match self.feed_required_input(py, state) {
+                        Ok(true) => {
+                            // 真の EOF に達した (正常終了)
+                            Self::set_fatal(state);
+                            return Ok(());
+                        }
+                        Ok(false) => {}
+                        Err(err) => {
+                            // feed 中のエラー (破損データ検出・I/O エラー) も
+                            // 回復不能として扱う
+                            Self::set_fatal(state);
+                            return Err(err);
+                        }
                     }
                 }
-                Err(_) => {
-                    state.tracks_cache = Some(Vec::new());
-                    state.ended = true;
-                    return Ok(());
+                Err(err) => {
+                    // 回復不能なパースエラー (DecodeError / SampleTableError /
+                    // InvalidState) は握りつぶさず Python 側に報告する
+                    Self::set_fatal(state);
+                    return Err(map_err(err));
                 }
             }
         }
@@ -2508,6 +2526,9 @@ impl Mp4FileDemuxer {
             // 必要な情報をすべてコピー・クローンしてから外の処理に移る。
             let extracted: Option<NextSampleExtracted> = match state.core.next_sample() {
                 Ok(Some(sample)) => {
+                    // 破損データ検出 (巨大な data_size) はサンプル単位のエラーであり、
+                    // デマクサー全体は終了させない (以降のサンプルは読み続けられる)。
+                    // デマクサーを終了させるのは回復不能なパースエラー (set_fatal) のみ。
                     if sample.data_size as u64 > MAX_SAMPLE_SIZE {
                         return Err(Mp4Exception::new_err(format!(
                             "Sample data size too large (corrupted data?): {} bytes",
@@ -2530,15 +2551,27 @@ impl Mp4FileDemuxer {
                     return Err(PyStopIteration::new_err(()));
                 }
                 Err(DemuxError::InputRequired(_)) => {
-                    if self.feed_required_input(py, &mut state)? {
-                        state.ended = true;
-                        return Err(PyStopIteration::new_err(()));
+                    match self.feed_required_input(py, &mut state) {
+                        Ok(true) => {
+                            // 真の EOF に達した (正常終了)
+                            state.ended = true;
+                            return Err(PyStopIteration::new_err(()));
+                        }
+                        Ok(false) => continue,
+                        Err(err) => {
+                            // feed 中のエラー (破損データ検出・I/O エラー) も
+                            // 回復不能として扱う
+                            Self::set_fatal(&mut state);
+                            return Err(err);
+                        }
                     }
-                    continue;
                 }
-                Err(_) => {
-                    state.ended = true;
-                    return Err(PyStopIteration::new_err(()));
+                Err(err) => {
+                    // 回復不能なパースエラー (DecodeError / SampleTableError /
+                    // InvalidState) は StopIteration に握りつぶさず Python 側に
+                    // 報告する
+                    Self::set_fatal(&mut state);
+                    return Err(map_err(err));
                 }
             };
 

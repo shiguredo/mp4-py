@@ -1206,7 +1206,13 @@ def test_multiple_samples_with_faststart():
 
 
 def test_demuxer_with_invalid_data():
-    """無効なデータを渡した場合のテスト"""
+    """EOF に達した無効なデータは空リストになる
+
+    目的: moov 発見前に EOF に達するデータ (32 バイト未満) はパースエラーに
+          ならず「トラック 0 本の正常終了」になることを確認する
+    検証: 16 バイトの無効データで空リストになること (パースエラーの
+          RuntimeError 化は 32 バイト以上のデータでのみ発生する)
+    """
     # ランダムなバイナリデータ（MP4 ではない）
     invalid_data = b"\x00\x00\x00\x10abcd12345678"
     buffer = io.BytesIO(invalid_data)
@@ -1216,6 +1222,119 @@ def test_demuxer_with_invalid_data():
     # 無効なデータの場合、空のリストになる（ブロックしないこと）
     samples = list(demuxer)
     assert samples == []
+
+
+def test_demuxer_reports_parse_error():
+    """パースエラーが RuntimeError として報告される
+
+    目的: 破損データのパースエラーが StopIteration / 空リストに隠蔽されず、
+          Python 側に RuntimeError として届くことを確認する
+    検証: 32 バイト以上の不正データで tracks アクセスと反復の両方が
+          RuntimeError を発生させ、エラー後の tracks が空リスト・以後の反復が
+          StopIteration で終わること
+    """
+    # ftyp 型不一致になる 32 バイト以上の不正データ
+    invalid_data = b"\x00" * 40
+
+    # tracks アクセスでパースエラーが報告される
+    demuxer = Mp4FileDemuxer(io.BytesIO(invalid_data))
+    with pytest.raises(RuntimeError, match="Failed to decode MP4 box"):
+        _ = demuxer.tracks
+    # エラー後のデマクサーは tracks が空リスト・以後の反復が StopIteration
+    assert demuxer.tracks == [], "エラー後の tracks が空リストであること"
+    with pytest.raises(StopIteration):
+        next(iter(demuxer))
+
+    # 反復でもパースエラーが報告される
+    demuxer = Mp4FileDemuxer(io.BytesIO(invalid_data))
+    with pytest.raises(RuntimeError, match="Failed to decode MP4 box"):
+        for _ in demuxer:
+            pass
+
+    # エラー後のデマクサーは tracks が空リスト・以後の反復が StopIteration
+    assert demuxer.tracks == [], "エラー後の tracks が空リストであること"
+    with pytest.raises(StopIteration):
+        next(iter(demuxer))
+
+
+def test_demuxer_reports_sample_table_error():
+    """SampleTableError も RuntimeError として報告される
+
+    目的: サンプルテーブルの不整合 (stsc の first_chunk 改変) による
+          SampleTableError が Python 側に RuntimeError として届くことを確認する
+    検証: 正規 MP4 の stsc の first_chunk を書き換えると "Sample table error"
+          を含む RuntimeError が発火すること
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample_entry = Mp4SampleEntryVp08(width=640, height=480)
+    for i in range(3):
+        muxer.append_sample(
+            Mp4MuxSample(
+                track_kind="video",
+                sample_entry=sample_entry,
+                keyframe=(i == 0),
+                timescale=30000,
+                duration=1001,
+                data=create_dummy_sample(i),
+            )
+        )
+    muxer.finalize()
+
+    mp4_bytes = bytearray(output_buffer.getvalue())
+    # stsc ボックス: size(4) + type(4) + version/flags(4) + entry_count(4) + first_chunk(4)
+    stsc_pos = mp4_bytes.find(b"stsc")
+    assert stsc_pos >= 0, "stsc ボックスが存在すること"
+    mp4_bytes[stsc_pos + 16 : stsc_pos + 20] = (5).to_bytes(4, "big")
+
+    demuxer = Mp4FileDemuxer(io.BytesIO(bytes(mp4_bytes)))
+    with pytest.raises(RuntimeError, match="Sample table error"):
+        _ = demuxer.tracks
+
+
+def test_demuxer_feed_error_state_after_error():
+    """feed 経路のエラー後も tracks が空リスト・以後の反復が StopIteration
+
+    目的: feed_required_input 中のエラー (ループ上限超過) 後も、DecodeError と
+          同じ状態遷移 (tracks 空リスト + ended) になることを確認する
+    検証: ループ上限を超える破損データで RuntimeError が発生し、エラー後の
+          tracks が空リスト・以後の反復が StopIteration で終わること
+    """
+    # ftyp + 28 バイトの free ボックスを 10001 個並べる (ループ上限 10000 を超える)
+    ftyp = bytes(
+        [
+            0x00,
+            0x00,
+            0x00,
+            0x14,
+            0x66,
+            0x74,
+            0x79,
+            0x70,
+            0x69,
+            0x73,
+            0x6F,
+            0x6D,
+            0x00,
+            0x00,
+            0x02,
+            0x00,
+            0x69,
+            0x73,
+            0x6F,
+            0x6D,
+        ]
+    )
+    box = struct.pack(">I", 28) + b"free" + b"\x00" * 20
+    invalid_data = ftyp + box * 10001
+
+    demuxer = Mp4FileDemuxer(io.BytesIO(invalid_data))
+    with pytest.raises(RuntimeError, match="too many iterations"):
+        _ = demuxer.tracks
+
+    assert demuxer.tracks == [], "エラー後の tracks が空リストであること"
+    with pytest.raises(StopIteration):
+        next(iter(demuxer))
 
 
 def test_demuxer_with_empty_data():
