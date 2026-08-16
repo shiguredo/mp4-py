@@ -2,9 +2,9 @@
 
 - Priority: Medium
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
-- Branch: feature/test-add-free-threading-wheel-tests
+- Branch: feature/add-free-threading-wheel-tests
 - Polished: 2026-08-15
 
 ## 目的
@@ -46,6 +46,8 @@ abi3 系 (`build_abi3_*`) は全ジョブ (macos / ubuntu / windows) でテス�
 
 ## 解決方法
 
-1. `.github/workflows/wheel.yml` の `build_ft_ubuntu` に `astral-sh/setup-uv` ステップと、`build_ft_macos` と同じテストステップを追加する (ubuntu-24.04 / ubuntu-24.04-arm 両方)
-2. `build_ft_windows` に同様のテストステップを追加する (shell: bash と `.venv-ft/Scripts/` パス。実行ファイルのパス形式は abi3 windows ジョブの実装を踏襲)
-3. develop への push で CI が通ることを確認する
+1. `.github/workflows/wheel.yml` の `build_ft_ubuntu` に `astral-sh/setup-uv` ステップと、`build_ft_macos` と同じテストステップを追加した (ubuntu-24.04 / ubuntu-24.04-arm 両方)
+2. `build_ft_windows` に同様のテストステップを追加した (shell: bash と `.venv-ft/Scripts/` パス。実行ファイルのパス形式は abi3 windows ジョブの実装を踏襲)
+3. ブランチ名を `feature/add-free-threading-wheel-tests` に変更した (当初の `feature/test-` は shiguredo-git の命名規則に該当しないため。0016 の先例と同様)
+4. CHANGES.md の `### misc` に「[UPDATE] Free-Threading wheel の ubuntu / windows ビルドでテストを実行する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+5. develop への push で CI が通ることを確認した

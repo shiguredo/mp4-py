@@ -191,6 +191,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          python-version: "3.14t"
       - name: Build wheel (Free-Threading, manylinux2014)
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
@@ -200,6 +204,11 @@ jobs:
             --interpreter python3.14t
           manylinux: auto
           rust-toolchain: stable
+      - name: Test wheel (3.14t)
+        run: |
+          uv venv --python 3.14t .venv-ft
+          uv pip install --python .venv-ft/bin/python wheelhouse/*.whl pytest pytest-timeout
+          NO_UV_SYNC=1 .venv-ft/bin/pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-ubuntu_${{ matrix.target.arch }}_ft-3.14t
@@ -222,6 +231,12 @@ jobs:
             --release --out wheelhouse --generate-stubs --compatibility off
             --interpreter python3.14t
           rust-toolchain: stable
+      - name: Test wheel (3.14t)
+        shell: bash
+        run: |
+          uv venv --python 3.14t .venv-ft
+          uv pip install --python .venv-ft/Scripts/python.exe wheelhouse/*.whl pytest pytest-timeout
+          NO_UV_SYNC=1 .venv-ft/Scripts/pytest tests/test_free_threading.py tests/test_mp4.py --timeout=30 -q --noconftest
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wheels-windows_x86_64_ft-3.14t
