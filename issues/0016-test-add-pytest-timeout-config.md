@@ -2,9 +2,9 @@
 
 - Priority: High
 - Created: 2026-07-22
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
-- Branch: feature/test-add-pytest-timeout-config
+- Branch: feature/add-pytest-timeout-config
 - Polished: 2026-08-12
 
 ## 目的
@@ -53,7 +53,9 @@ High。
 
 ## 解決方法
 
-1. `pyproject.toml` の `[tool.pytest.ini_options]` に `timeout = 10` を追加する
-2. `NO_UV_SYNC=1 uv run pytest tests/` で全テストがタイムアウトせずに完走することを確認する
-3. 10 秒を超えるテストが検出された場合は `@pytest.mark.timeout(N)` (N は 30 以下) を付与する
-4. 変更は `pyproject.toml` のみで完結するため、fuzzing テストの例外修正とリネーム (issues/0017-test-fuzzing-tests-swallow-exceptions-and-naming.md) は本 issue の対応後 (マージ順で本 issue が先) に実施する
+1. `pyproject.toml` の `[tool.pytest.ini_options]` に `timeout = 10` を追加した (コメントで `--timeout` / `PYTEST_TIMEOUT` 環境変数が ini の値より優先されることを明記)
+2. `NO_UV_SYNC=1 uv run pytest tests/` で全テストがタイムアウトせずに完走することを確認した (104 passed / 7 skipped、約 7.3 秒)
+3. pytest ヘッダーの `timeout: 10.0s` 表示で設定が有効になっていることを確認した
+4. 10 秒を超えるテストは存在しないため `@pytest.mark.timeout(N)` の付与は不要だった
+5. ブランチ名を `feature/add-pytest-timeout-config` に変更した (当初の `feature/test-` は shiguredo-git の命名規則に該当しないため)
+6. CHANGES.md の `### misc` に「[ADD] pytest の既定タイムアウトを pyproject.toml に設定する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
