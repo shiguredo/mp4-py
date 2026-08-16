@@ -55,6 +55,12 @@ timeout = 10
 target-version = "py312"
 line-length = 100
 
+[tool.ty]
+# 拡張モジュール (mp4_ext.abi3.so) は型スタブを持たないため、import 解決を
+# 許可する。型スタブの同梱は別途検討する (型スタブに関する issue を参照)。
+[tool.ty.analysis]
+allowed-unresolved-imports = ["mp4.mp4_ext"]
+
 [tool.uv]
 package = false
 managed = true

@@ -3,6 +3,7 @@
 """
 
 import io
+from typing import TypedDict
 
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -30,6 +31,14 @@ from conftest import (
     st_video_sample_entry,
     st_audio_sample_entry,
 )
+
+
+class SampleEntryData(TypedDict):
+    """mux するサンプルデータの dict 型 (duration が int であることを保証する)"""
+
+    data: bytes
+    duration: int
+    keyframe: bool
 
 
 @given(
@@ -127,7 +136,8 @@ def prop_variable_duration_samples(
     output_buffer = io.BytesIO()
     muxer = Mp4FileMuxer(output_buffer)
 
-    original_samples = []
+    # duration が int であることを型レベルで保証する (ty の診断解消のため)
+    original_samples: list[SampleEntryData] = []
     for i in range(sample_count):
         # 各サンプルに異なる duration を割り当て
         duration = data.draw(st.integers(min_value=100, max_value=10000))
