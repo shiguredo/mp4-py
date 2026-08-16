@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-08-15
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-16
 - Model: Opus 4.7
 - Branch: feature/refactor-add-frozen-to-mp4-demux-sample
 - Polished: 2026-08-15
@@ -48,8 +48,11 @@ struct Mp4DemuxSample {
 
 ## 解決方法
 
-1. `src/lib.rs` の `Mp4DemuxSample` の `#[pyclass]` に `frozen` を追加する
-2. `cargo build` / `cargo clippy --all-targets -- -D warnings` が通ることを確認する
-3. CHANGES.md の `### misc` に「[UPDATE] `Mp4DemuxSample` に frozen を付与する」を追記する (著者表記付き、shiguredo-changelog スキルの形式に従う)
-4. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
-5. CI (wheel.yml) の Free-Threading ジョブが通ることを確認する
+1. `src/lib.rs` の `Mp4DemuxSample` の `#[pyclass]` に `frozen` を追加した (`#[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]`)
+2. `cargo build` / `cargo clippy --all-targets -- -D warnings` が通ることを確認した (全フィールドが Sync 要件を満たす。data getter のキャッシュ書き込みは Mutex 経由の interior mutability で無変更で動作)
+3. `tests/test_mp4.py` に 2 テストを追加した:
+   - `test_demux_sample_properties` に frozen 固有の挙動検証を追加: `demux_sample.track = None` が `readonly attribute` (Py_READONLY の member_descriptor) で拒否されることを検証
+   - `test_demux_sample_data_cached`: data アクセスの 2 回目がキャッシュを返すこと (`is` 同一性) を検証
+4. CHANGES.md の `### misc` に「[UPDATE] `Mp4DemuxSample` に frozen を付与する」を追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+5. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (119 passed, 7 skipped) を確認した
+6. CI (wheel.yml) の Free-Threading ジョブが通ることを確認した
