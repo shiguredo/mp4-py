@@ -1030,6 +1030,75 @@ def test_subtitle_mux_demux_mixed_roundtrip():
 # =============================================================================
 
 
+def test_append_sample_after_finalize_preserves_output():
+    """finalize 後の append_sample が出力ファイルを破壊しない
+
+    目的: finalize 後の append_sample は write に進む前にエラーを返し、
+          mdat ペイロードを上書きしないことを確認する
+    検証: finalize 直後の出力バッファの内容が、失敗した append_sample の前後で
+          一致すること (ロールバックによる truncate が実行されないこと)
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    muxer.append_sample(sample)
+    muxer.finalize()
+
+    before = output_buffer.getvalue()
+
+    with pytest.raises(RuntimeError, match="finalized"):
+        muxer.append_sample(sample)
+
+    after = output_buffer.getvalue()
+    assert after == before, (
+        f"finalize 後の append_sample で出力内容が破壊されないこと "
+        f"(破壊前 {len(before)} バイト / 破壊後 {len(after)} バイト)"
+    )
+
+
+def test_append_sample_after_finalize_preserves_output_with_faststart():
+    """faststart でも finalize 後の append_sample が出力ファイルを破壊しない
+
+    目的: reserved_moov_box_size 指定時 (faststart) でも、finalize 後の
+          append_sample が write 前にエラーを返し、出力を破壊しないことを確認する
+    検証: faststart レイアウトで finalize 直後の出力バッファの内容が、
+          失敗した append_sample の前後で一致すること
+    """
+    output_buffer = io.BytesIO()
+    options = Mp4FileMuxerOptions(
+        reserved_moov_box_size=1024 * 1024,
+    )
+    muxer = Mp4FileMuxer(output_buffer, options)
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=Mp4SampleEntryVp08(width=VIDEO_WIDTH, height=VIDEO_HEIGHT),
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=create_dummy_sample(0),
+    )
+    muxer.append_sample(sample)
+    muxer.finalize()
+
+    before = output_buffer.getvalue()
+
+    with pytest.raises(RuntimeError, match="finalized"):
+        muxer.append_sample(sample)
+
+    after = output_buffer.getvalue()
+    assert after == before, (
+        f"faststart でも finalize 後の append_sample で出力内容が破壊されないこと "
+        f"(破壊前 {len(before)} バイト / 破壊後 {len(after)} バイト)"
+    )
+
+
 def test_append_sample_rollback_on_error():
     """append_sample が失敗したときに書き込んだバイトが巻き戻る
 
