@@ -46,6 +46,123 @@ def create_dummy_sample(index: int, size: int = 1024) -> bytes:
     return bytes(data)
 
 
+def test_mux_sample_rejects_int_data():
+    """Mp4MuxSample の data に int / bool を渡すと TypeError になる
+
+    目的: bytes(12345) が b"\\x00" * 12345 を返す仕様により、型ミスの int が
+          静かにゼロ埋めバイト列に変換される問題を検出する
+    検証: data=12345 / data=True で TypeError が発火すること
+    """
+    # int は bytes(12345) がゼロ埋めバイト列を返すため型ミスとして弾く
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4MuxSample(
+            track_kind="video",
+            sample_entry=None,
+            keyframe=True,
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=12345,
+        )
+    # bool も同様に bytes(True) が 1 バイトのゼロ列を返すため弾く
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4MuxSample(
+            track_kind="video",
+            sample_entry=None,
+            keyframe=True,
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=True,
+        )
+
+
+def test_mux_sample_accepts_bytes_like_data():
+    """Mp4MuxSample の data に bytes-like や list[int] を渡すと従来どおり動作する
+
+    目的: extract_bytes のフォールバック (list[int]) と buffer protocol 経路
+          (bytearray / memoryview) が型チェック追加後も機能することを確認する
+    検証: 各入力が正しいバイト列に変換されること
+    """
+    # list[int] はフォールバックの意図された用途なので従来どおり動作する
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=None,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=[1, 2, 3],
+    )
+    assert sample.data == b"\x01\x02\x03"
+    # bytearray / memoryview は buffer protocol 経由で従来どおり動作する
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=None,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=bytearray(b"abc"),
+    )
+    assert sample.data == b"abc"
+    sample = Mp4MuxSample(
+        track_kind="video",
+        sample_entry=None,
+        keyframe=True,
+        timescale=TIMESCALE,
+        duration=SAMPLE_DURATION,
+        data=memoryview(b"xyz"),
+    )
+    assert sample.data == b"xyz"
+
+
+def test_extract_bytes_rejects_int_in_sample_entries():
+    """SampleEntry 系コンストラクタの bytes 引数に int を渡すと TypeError になる
+
+    目的: extract_bytes を使う主要経路 (config_obus / dec_specific_info /
+          streaminfo_data / sps_data / nalu_data) で型ミスの int が静かに
+          ゼロ埋めバイト列に変換されないことを確認する
+    検証: 各コンストラクタで int を渡すと TypeError が発火すること
+    """
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4SampleEntryAv01(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            seq_profile=0,
+            seq_level_idx_0=0,
+            config_obus=12345,
+        )
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4SampleEntryMp4a(
+            channel_count=2,
+            sample_rate=48000,
+            dec_specific_info=12345,
+        )
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4SampleEntryFlac(
+            channel_count=2,
+            sample_rate=48000,
+            streaminfo_data=12345,
+        )
+    # extract_bytes_list 経路 (sps_data の各要素が bytes に変換される)
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4SampleEntryAvc1(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            avc_profile_indication=0x42,
+            avc_level_indication=0x29,
+            profile_compatibility=0xC0,
+            sps_data=[12345],
+        )
+    # extract_bytes_list 経路 (nalu_data の各要素が bytes に変換される)
+    with pytest.raises(TypeError, match="expected bytes"):
+        Mp4SampleEntryHev1(
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            general_profile_idc=1,
+            general_level_idc=120,
+            nalu_types=[32],
+            nalu_data=[12345],
+        )
+
+
 def test_mux_demux_roundtrip():
     """マルチプレックス → デマルチプレックスのラウンドトリップテスト"""
     # ===== マルチプレックス処理 =====

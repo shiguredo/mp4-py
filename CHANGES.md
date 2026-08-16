@@ -64,6 +64,9 @@
 - [FIX] Mp4SampleEntryStpp の null 文字入り入力で panic しないようにする
   - コンストラクタで null 文字を検証し、ValueError を返すようにする
   - @voluntas
+- [FIX] extract_bytes が int / bool を静かにゼロ埋めバイト列に変換しないようにする
+  - 型ミスの int / bool を TypeError として検出し、データ破壊を防ぐ
+  - @voluntas
 
 ### misc
 
