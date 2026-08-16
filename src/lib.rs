@@ -1795,7 +1795,7 @@ impl Mp4MuxSample {
 
 // ===== Mp4DemuxSample (遅延読み込み対応) =====
 
-#[pyclass(module = "mp4.mp4_ext", skip_from_py_object)]
+#[pyclass(module = "mp4.mp4_ext", frozen, skip_from_py_object)]
 struct Mp4DemuxSample {
     #[pyo3(get)]
     track: Py<Mp4TrackInfo>,

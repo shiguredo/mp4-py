@@ -73,6 +73,9 @@
 - [ADD] pytest の既定タイムアウトを pyproject.toml に設定する
   - テストがハングした場合のセーフティネットとして 10 秒を設定する
   - @voluntas
+- [UPDATE] `Mp4DemuxSample` に frozen を付与する
+  - CODEBASE.md の pyclass 規約 (Muxer / Demuxer / DemuxSample は frozen) に準拠する
+  - @voluntas
 - [UPDATE] Free-Threading 環境で input_stream 共有レースの回帰テストを追加する
   - @voluntas
 - [UPDATE] hypothesis を 6.158.1 に上げる

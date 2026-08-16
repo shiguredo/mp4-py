@@ -1039,6 +1039,41 @@ def test_demux_sample_properties():
     assert abs(demux_sample.duration_seconds - 0.033333) < 0.0001
     # composition_time_offset を省略した場合は None
     assert demux_sample.composition_time_offset is None
+    # frozen のため Py フィールドへの代入が readonly attribute で拒否される
+    # (frozen クラスでは Py フィールドが Py_READONLY の member_descriptor になる。
+    # 一般の getter フィールドは frozen の有無に関わらず not writable になるため、
+    # ここでは frozen 固有の挙動を検証する)
+    with pytest.raises(AttributeError, match="readonly attribute"):
+        demux_sample.track = None
+
+
+def test_demux_sample_data_cached():
+    """DemuxSample の遅延読み込みがキャッシュされる
+
+    目的: data アクセスが 1 回目で読み込み・キャッシュされ、2 回目以降は
+          キャッシュを返すことを確認する (frozen + Mutex の interior mutability)
+    検証: 同一インスタンスの .data が 2 回アクセスしても同一オブジェクトになること
+    """
+    track = Mp4TrackInfo(
+        track_id=1,
+        kind="video",
+        duration=5000000,
+        timescale=1000000,
+    )
+    sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
+
+    demux_sample = Mp4DemuxSample(
+        track=track,
+        sample_entry=sample_entry,
+        keyframe=True,
+        timestamp=500000,
+        duration=33333,
+        data_offset=0,
+        data_size=4,
+        input_stream=io.BytesIO(b"test"),
+    )
+
+    assert demux_sample.data is demux_sample.data, "2 回目の data アクセスがキャッシュを返すこと"
 
 
 def test_demux_sample_composition_time_offset():
