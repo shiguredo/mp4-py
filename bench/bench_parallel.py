@@ -63,7 +63,10 @@ def bench_parallel(samples: list[bytes], jobs: int, threads: int) -> float:
 
 def main() -> None:
     samples = make_samples()
-    print(f"Python: {sys.version.split()[0]}, GIL: {sys._is_gil_enabled()}")
+    # sys._is_gil_enabled は Python 3.13 で追加された API のため、
+    # 存在しない環境 (Python 3.12) では GIL 有効が確定しているので True とみなす
+    gil_enabled = sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True
+    print(f"Python: {sys.version.split()[0]}, GIL: {gil_enabled}")
     print(f"mp4-py version: {mp4.__version__}")
     print(
         f"jobs={TOTAL_JOBS}, samples/job={NUM_SAMPLES}, sample_size={SAMPLE_SIZE} B, "

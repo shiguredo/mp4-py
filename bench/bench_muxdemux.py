@@ -60,7 +60,10 @@ def fmt_ns(v: float) -> str:
 def main() -> None:
     samples = make_samples()
     total_bytes = NUM_SAMPLES * SAMPLE_SIZE
-    print(f"Python: {sys.version.split()[0]}, GIL: {sys._is_gil_enabled()}")
+    # sys._is_gil_enabled は Python 3.13 で追加された API のため、
+    # 存在しない環境 (Python 3.12) では GIL 有効が確定しているので True とみなす
+    gil_enabled = sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True
+    print(f"Python: {sys.version.split()[0]}, GIL: {gil_enabled}")
     print(f"mp4-py version: {mp4.__version__} (native: {mp4.native_version()})")
     print(
         f"samples={NUM_SAMPLES}, sample_size={SAMPLE_SIZE} bytes, "
