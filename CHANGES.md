@@ -67,6 +67,9 @@
 - [FIX] extract_bytes が int / bool を静かにゼロ埋めバイト列に変換しないようにする
   - 型ミスの int / bool を TypeError として検出し、データ破壊を防ぐ
   - @voluntas
+- [FIX] Demux のパースエラーを Python 側に報告する
+  - 破損データのパースエラーが StopIteration / 空リストに隠蔽されず RuntimeError として届くようにする
+  - @voluntas
 
 ### misc
 
