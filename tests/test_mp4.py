@@ -1419,6 +1419,127 @@ def test_subtitle_sample_entry_stpp_rejects_null_characters():
     assert sample_entry.auxiliary_mime_types == "application/ttml+xml"
 
 
+# null 入り stpp ボックスのデマルチプレックス挙動を検証するための定数・ヘルパー
+_STPP_NAMESPACE = "http://www.w3.org/ns/ttml"
+_STPP_SCHEMA_LOCATION = "http://www.w3.org/ns/ttml#profile"
+_STPP_AUX_MIME_TYPES = "application/ttml+xml"
+_STPP_NAMESPACE_BYTES = _STPP_NAMESPACE.encode()
+
+
+def _build_stpp_subtitle_mp4() -> bytes:
+    """STPP 字幕トラックを 1 本含む正規 MP4 のバイト列を生成
+
+    サンプルデータは create_dummy_sample で生成する。これは "stpp" という
+    バイト列を含まないため、後段の find による stpp ボックスの位置特定が
+    正しく 1 箇所だけに一致する前提を満たす。
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample_entry = Mp4SampleEntryStpp(
+        namespace=_STPP_NAMESPACE,
+        schema_location=_STPP_SCHEMA_LOCATION,
+        auxiliary_mime_types=_STPP_AUX_MIME_TYPES,
+    )
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="subtitle",
+            sample_entry=sample_entry,
+            keyframe=True,
+            timescale=1000,
+            duration=100,
+            data=create_dummy_sample(0, size=256),
+        )
+    )
+    muxer.finalize()
+    return output_buffer.getvalue()
+
+
+def _corrupt_stpp_namespace(mp4_bytes: bytes, mode: str) -> bytes:
+    """stpp ボックスの namespace 領域を破損させた MP4 のバイト列を返す
+
+    mode が "single" なら namespace 途中の 1 バイトを null 置換し、
+    "consecutive" なら namespace 領域全体を null 化する。
+
+    単一 null がデコードエラー (InsufficientBuffer) になるのは、フィールドずれの
+    結果として残った auxiliary_mime_types の先頭 4 バイトが unknown box の巨大な
+    size と解釈されるためであり、この文字列内容に暗黙に依存している。
+    """
+    data = bytearray(mp4_bytes)
+    # テスト用に構築したファイルは stpp ボックスが 1 個だけ、かつサンプルデータに
+    # "stpp" というバイト列が現れない前提で find で位置を特定する
+    stpp_pos = data.find(b"stpp")
+    assert stpp_pos >= 0, "stpp ボックスが見つからないこと"
+    # stpp ボックスの先頭は size(4) + type(4) なので、type 位置から 4 戻る
+    box_start = stpp_pos - 4
+    # ペイロードはヘッダ (size 4 + type 4) + reserved(6) + data_reference_index(2)
+    # を除いた先頭が namespace の null 終端文字列になる
+    ns_start = box_start + 8 + 6 + 2
+    # 破損対象が期待した namespace の先頭であることを自己検証する
+    assert data[ns_start : ns_start + 4] == _STPP_NAMESPACE_BYTES[:4], (
+        "破損位置が namespace 先頭でないこと"
+    )
+    ns_len = len(_STPP_NAMESPACE_BYTES)
+    if mode == "single":
+        data[ns_start + ns_len // 2] = 0x00
+    elif mode == "consecutive":
+        for i in range(ns_start, ns_start + ns_len):
+            data[i] = 0x00
+    else:
+        raise AssertionError(f"不明なモード: {mode}")
+    return bytes(data)
+
+
+def test_stpp_demux_reports_single_null_corruption():
+    """stpp の namespace 途中の null 置換は RuntimeError になる (現状挙動の特性化)
+
+    目的: 破損した null 入り stpp ボックスのうち、文字列領域内の 1 バイトを
+          null 置換する破損 (単一 null) のデマルチプレックス挙動を特性化する。
+          コアの Utf8String::decode は null で読み止めてフィールドを短縮する
+          だけで、null 自体を検出するわけではない。このため後続フィールドが
+          ずれ、残りのバイトを unknown box として読む際にペイロード境界を
+          超えて InsufficientBuffer (デコードエラー) になる。これは単一 null
+          の位置やレイアウトに依存する現状挙動の特性化であり、null の検出
+          そのものを保証するものではない
+    検証: namespace 途中の 1 バイトを null 置換した MP4 のデマルチプレックスが
+          "Failed to decode MP4 box" を含み、stpp ボックス名が示された
+          RuntimeError を報告すること
+    注記: コア側で null 検出を実装した場合は、このエラー種別や match 対象が
+          変わり得るため、その時点で検証内容を更新すること
+    """
+    mp4_bytes = _build_stpp_subtitle_mp4()
+    corrupted = _corrupt_stpp_namespace(mp4_bytes, "single")
+    demuxer = Mp4FileDemuxer(io.BytesIO(corrupted))
+    with pytest.raises(RuntimeError, match="Failed to decode MP4 box.*\\[stpp\\]"):
+        _ = demuxer.tracks
+
+
+def test_stpp_demux_silent_misparse_on_consecutive_null():
+    """stpp の namespace 全体の null 化は静かに空文字列になる (既知のギャップ)
+
+    目的: コアの Utf8String::decode は null で読み止めるため、フィールド先頭から
+          の連続 null は空文字列として解釈され、残りバイトが可変サイズの
+          unknown box として成功してしまう。この破損はエラーなしで欠損値
+          (空文字列) が返る黙っての誤パースとなることを確認する
+    検証: namespace 領域全体を null 化した MP4 がエラーを出さず、
+          namespace / schema_location / auxiliary_mime_types が空文字列で
+          返ること
+    注記: これは既知のギャップであり、根因はコア (shiguredo_mp4) の
+          Utf8String::decode にある。コア側でデコード挙動を修正した場合は、
+          本テストを「エラーになる」「値が復元される」といった正の検証に
+          置き換えること
+    """
+    mp4_bytes = _build_stpp_subtitle_mp4()
+    corrupted = _corrupt_stpp_namespace(mp4_bytes, "consecutive")
+    demuxer = Mp4FileDemuxer(io.BytesIO(corrupted))
+    tracks = demuxer.tracks
+    assert len(tracks) == 1, "トラックが 1 本あること"
+    sample = next(demuxer)
+    assert isinstance(sample.sample_entry, Mp4SampleEntryStpp)
+    assert sample.sample_entry.namespace == ""
+    assert sample.sample_entry.schema_location == ""
+    assert sample.sample_entry.auxiliary_mime_types == ""
+
+
 def test_subtitle_sample_entry_wvtt():
     """WVTT (WebVTT 字幕) サンプルエントリーのテスト"""
     output_buffer = io.BytesIO()
