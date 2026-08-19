@@ -4,6 +4,7 @@
 - Completed: {YYYY-MM-DD
 - Branch: feature/test-track-codec-mix-coverage
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
