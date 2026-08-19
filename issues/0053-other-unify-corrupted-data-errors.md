@@ -5,6 +5,7 @@
 - Completed: {YYYY-MM-DD}
 - Branch: feature/refactor-unify-corrupted-data-errors
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
