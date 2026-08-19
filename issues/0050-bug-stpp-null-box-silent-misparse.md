@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Created: 2026-08-16
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-19
 - Branch: feature/fix-stpp-null-box-silent-misparse
 - Polished: 2026-08-19
 
@@ -35,7 +35,19 @@
 
 ## 解決方法
 
-1. コアの `Utf8String::decode` と stpp ボックスのデコード経路を再確認する
-2. 破損データ (null 入り stpp) のデマクス挙動をテストで再現する (単一 null と連続 null の両パターン)
-3. 対応方針 (コア側 / バインド側 / 対応不要) を確定し、このセクションに記録する
-4. 必要な場合は実装し、テストを追加する
+調査と対応の判断結果を記録する。
+
+1. コア (`shiguredo_mp4` 2026.4.0) の `Utf8String::decode` と `StppBox::decode` のデコード経路を再確認した
+   - `Utf8String::decode` は null バイトで読み止める (null が終端まで見つからない場合のみエラー)。null 自体を検出するわけではない
+2. null 入り stpp ボックスのデマクス挙動をテストで再現した (単一 null と連続 null の両パターン)
+   - 単一 null (文字列領域内の 1 バイトを null 置換): フィールドずれにより残りバイトを unknown box として読む際にペイロード境界を超え、`Failed to decode MP4 box: [stpp] InsufficientBuffer` として RuntimeError が届く (破損検出の経路として機能している)
+   - 連続 null (フィールド先頭からの連続 null): フィールドが空文字列として解釈され、残りバイトが size=0 (可変サイズ) の unknown box として成功するため、エラーなしで欠損値 (空文字列) が返る黙っての誤パースになる
+3. 対応方針を確定した
+   - 根因はコアの `Utf8String::decode` / `StppBox::decode` のデコード挙動にあり、コア側の対応として分離する。本 issue (mp4-py) は調査結果の記録と挙動の特性化テストで結了する
+   - バインド側 (mp4-py) での namespace 空文字検出は不採用とした。理由は、仕様上非空の namespace が空で返ることを破損とみなす誤検知のリスク、コンストラクタが空 namespace を許容するため mux → demux の往復で自ファイルがエラーになる往復不整合、および schema_location / auxiliary_mime_types のみの破損は検出不能という部分カバレッジによる
+   - コア側修正の対応は別途提案する (本 flow ではコアリポジトリに issue を作成しない)
+4. 特性化テストを追加した (`tests/test_mp4.py`)
+   - `test_stpp_demux_reports_single_null_corruption`: 単一 null が RuntimeError (`Failed to decode MP4 box: [stpp]`) になることを検証
+   - `test_stpp_demux_silent_misparse_on_consecutive_null`: 連続 null がエラーなしで namespace / schema_location / auxiliary_mime_types を空文字列として返す既知ギャップを特性化
+5. `CHANGES.md` の `## develop` の `### misc` にテスト追加のエントリを追記した (著者表記 `- @voluntas` 付き、shiguredo-changelog スキルの形式に従う)
+6. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過 (124 passed, 7 skipped) を確認した
