@@ -4,6 +4,7 @@
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-muxer-constructor-stream-leak
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
