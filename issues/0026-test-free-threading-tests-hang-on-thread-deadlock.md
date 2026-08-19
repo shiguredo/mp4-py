@@ -5,6 +5,7 @@
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-pytest-hang-on-thread-deadlock
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
