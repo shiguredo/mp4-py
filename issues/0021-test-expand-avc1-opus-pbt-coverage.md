@@ -6,6 +6,7 @@
 - Model: Opus 4.7
 - Branch: feature/test-expand-avc1-opus-pbt-coverage
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
