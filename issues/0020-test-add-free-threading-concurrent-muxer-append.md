@@ -6,6 +6,7 @@
 - Model: Opus 4.7
 - Branch: feature/test-add-free-threading-concurrent-muxer-append
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
