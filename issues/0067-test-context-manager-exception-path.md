@@ -4,6 +4,7 @@
 - Completed: {YYYY-MM-DD}
 - Branch: feature/test-context-manager-exception-path
 - Polished: {YYYY-MM-DD}
+- Milestone: 2026.2.0
 
 ## 目的
 
