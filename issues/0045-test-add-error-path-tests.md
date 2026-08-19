@@ -6,6 +6,7 @@
 - Model: Opus 4.7
 - Branch: feature/test-add-error-path-tests
 - Polished: 2026-08-15
+- Milestone: 2026.2.0
 
 ## 目的
 
