@@ -7,14 +7,14 @@
 
 ## 目的
 
-パースエラーを Python 側に報告するようになった結果、`RuntimeError` のメッセージにビルドマシンの絶対パス (`(at /Users/voluntas/.cargo/registry/.../basic_types.rs:461)`) が含まれるようになった。配布パッケージのエラーメッセージにビルド環境情報が含まれるのは情報開示・品質の問題であり、解消する。
+パースエラーを Python 側に報告するようになった結果、`RuntimeError` のメッセージにビルドマシンの絶対パス (cargo レジストリ配下のソースファイルパス) が含まれるようになった。配布パッケージのエラーメッセージにビルド環境情報が含まれるのは情報開示・品質の問題であり、解消する。
 
 ## 現状
 
-コア (shiguredo_mp4 2026.4.0) の `Error` の Display 実装が常に `(at {file!()}:{line!()})` を付加するため、パースエラーが Python 側に届く際にビルドマシンのユーザー名と絶対パスが露出する:
+コア (shiguredo_mp4 2026.4.0) の `Error` の Display 実装が常に `(at {file!()}:{line!()})` を付加するため、パースエラーが Python 側に届く際にビルドマシンのユーザー名と絶対パスが露出する。実測したメッセージの形は次のとおりである (ビルド環境のパス部は `<ビルド環境の絶対パス>` に置き換えてある)。
 
 ```
-mp4 error: Failed to decode MP4 box: InvalidData: Expected box type `ftyp`, but got `\x00\x00\x00\x00` (at /Users/voluntas/.cargo/registry/src/index.crates.io-.../basic_types.rs:461)
+mp4 error: Failed to decode MP4 box: InvalidData: Expected box type `ftyp`, but got `\x00\x00\x00\x00` (at <ビルド環境の絶対パス>/basic_types.rs:461)
 ```
 
 パースエラーの握りつぶし修正 (0036) により初めてユーザーに露出するようになった。
