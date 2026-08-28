@@ -1,7 +1,7 @@
 # パースエラーメッセージにビルド環境の絶対パスが露出する
 
 - Created: 2026-08-16
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-28
 - Branch: feature/fix-error-message-absolute-path
 - Polished: {YYYY-MM-DD}
 
@@ -32,7 +32,10 @@ mp4 error: Failed to decode MP4 box: InvalidData: Expected box type `ftyp`, but 
 
 ## 解決方法
 
-1. コアの Display 実装を確認し、`(at ...)` の付加がどのレイヤーで行われているかを特定する
-2. バインド側で除去するかコア側へ依頼するかを判断する
-3. 対応を実装し、テストを追加する
-4. 全テスト通過を確認する
+コア側で対応された。shiguredo_mp4 2026.5.0 で `Error` の Display が `shorten_source_path` を通すようになり、最後方の `src/` 以降だけを報告する形に変わった。本リポジトリでは 2026.5.0 への追従 (commit `1f292c1`) により解消している。
+
+1. `(at ...)` の付加はコアの `Error` の Display 実装 (shiguredo_mp4 の codec 層) であることを特定した
+2. バインド側で除去するのではなく、コア側の Display 変更によって解決した (バインド側で正規表現による除去はしていない)
+3. 2026-08-28 に実測で確認した。破損入力のデマクスは `mp4 error: Failed to decode MP4 box: InvalidData: Expected box type ftyp, but got ... (at src/basic_types.rs:461)` の形になり、ビルドマシンの絶対パスも cargo レジストリへのパスも含まれない
+4. エラー種別・理由・ボックス型はそのまま残っており、可読性は維持されている
+5. 2026-08-28 に `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で 124 passed / 7 skipped を確認した
