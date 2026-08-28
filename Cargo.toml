@@ -7,7 +7,7 @@ version = "0.0.0"
 edition = "2024"
 # edition = "2024" が Rust 1.85 以上を必須にしているので、build.rs の
 # `cargo::rustc-env` (二重コロン記法, Cargo 1.77+ 必須) も自動的にカバーされる。
-# shiguredo_mp4 2026.4.0 が Rust 1.93 以上を要求するため MSRV を合わせる。
+# shiguredo_mp4 2026.5.0 が Rust 1.93 以上を要求するため MSRV を合わせる。
 rust-version = "1.93"
 publish = false
 
@@ -20,7 +20,7 @@ name = "mp4_ext"
 # PyO3 0.29 は Free-Threading (Py_GIL_DISABLED) の Python 3.14+ に対応。
 pyo3 = { version = "0.29", features = ["abi3-py312", "experimental-inspect", "extension-module"] }
 # crates.io 公開版の shiguredo_mp4 (Rust クレート) を使う。
-shiguredo_mp4 = "=2026.4.0"
+shiguredo_mp4 = "=2026.5.0"
 
 [build-dependencies]
 # shiguredo_mp4 の実際に使われている pin バージョンを Cargo.lock から解決するため。

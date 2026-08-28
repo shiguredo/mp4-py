@@ -1513,31 +1513,29 @@ def test_stpp_demux_reports_single_null_corruption():
         _ = demuxer.tracks
 
 
-def test_stpp_demux_silent_misparse_on_consecutive_null():
-    """stpp の namespace 全体の null 化は静かに空文字列になる (既知のギャップ)
+def test_stpp_demux_reports_consecutive_null_corruption():
+    """stpp の namespace 全体の null 化は RuntimeError になる (コア 2026.5.0 追従)
 
-    目的: コアの Utf8String::decode は null で読み止めるため、フィールド先頭から
-          の連続 null は空文字列として解釈され、残りバイトが可変サイズの
-          unknown box として成功してしまう。この破損はエラーなしで欠損値
-          (空文字列) が返る黙っての誤パースとなることを確認する
-    検証: namespace 領域全体を null 化した MP4 がエラーを出さず、
-          namespace / schema_location / auxiliary_mime_types が空文字列で
-          返ること
-    注記: これは既知のギャップであり、根因はコア (shiguredo_mp4) の
-          Utf8String::decode にある。コア側でデコード挙動を修正した場合は、
-          本テストを「エラーになる」「値が復元される」といった正の検証に
-          置き換えること
+    目的: 従来はフィールド先頭からの連続 null が空文字列として読まれ、
+          残りバイトが可変サイズの unknown box として成功するため、
+          エラーなしで欠損値 (空文字列) が返る黙っての誤パースだった。
+          コア 2026.5.0 で UnknownBox のデコードがコンテナ内部の可変長
+          ボックス (size=0 のゼロ埋め) を拒否するようになり、この破損は
+          デコードエラーとして報告される。旧特性化テストの注記が求めていた
+          「エラーになる」正の検証への置き換え
+    検証: namespace 領域全体を null 化した MP4 のデマルチプレックスが
+          "Failed to decode MP4 box" を含み、stpp ボックス名が示された
+          RuntimeError を報告すること
+    注記: Utf8String::decode 自体は依然として null で読み止めるため、
+          null 検出そのものを保証するものではない。コア側で null 検出を
+          実装した場合は、このエラー種別や match 対象がかわり得るため、
+          その時点で検証内容を更新すること
     """
     mp4_bytes = _build_stpp_subtitle_mp4()
     corrupted = _corrupt_stpp_namespace(mp4_bytes, "consecutive")
     demuxer = Mp4FileDemuxer(io.BytesIO(corrupted))
-    tracks = demuxer.tracks
-    assert len(tracks) == 1, "トラックが 1 本あること"
-    sample = next(demuxer)
-    assert isinstance(sample.sample_entry, Mp4SampleEntryStpp)
-    assert sample.sample_entry.namespace == ""
-    assert sample.sample_entry.schema_location == ""
-    assert sample.sample_entry.auxiliary_mime_types == ""
+    with pytest.raises(RuntimeError, match="Failed to decode MP4 box.*\\[stpp\\]"):
+        _ = demuxer.tracks
 
 
 def test_subtitle_sample_entry_wvtt():

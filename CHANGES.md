@@ -47,6 +47,9 @@
   - @voluntas
 - [UPDATE] mp4-rust を 2026.4.0 に上げる
   - @voluntas
+- [UPDATE] mp4-rs を 2026.5.0 に上げる
+  - UnknownBox のデコードがコンテナ内部の可変長ボックスを拒否するようになったため、stpp の連続 null 破損を黙っての誤パースとして特性化していたテストを、エラーを報告する正の検証に更新する
+  - @voluntas
 - [FIX] append_sample 失敗時に書き込んだバイトがストリームに残らないようにする
   - write 以降のエラーで seekable なストリームを巻き戻し、入力の補正後に retry できるようにする
   - 非 seekable なストリームでは使用不能の案内を例外メッセージに付加する
