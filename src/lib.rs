@@ -2193,9 +2193,7 @@ impl Mp4FileMuxer {
         // (truncate) でファイル全体が破壊されるため。文言はコアの
         // MuxError::AlreadyFinalized と揃える。
         if state.finalized {
-            return Err(PyRuntimeError::new_err(
-                "Muxer has already been finalized",
-            ));
+            return Err(PyRuntimeError::new_err("Muxer has already been finalized"));
         }
         let core = state
             .core
