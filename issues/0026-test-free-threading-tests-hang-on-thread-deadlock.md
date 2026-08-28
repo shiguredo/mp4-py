@@ -1,6 +1,5 @@
 # Free-Threading テストがスレッドデッドロック時に pytest プロセスごとハングする
 
-- Priority: Medium
 - Created: 2026-08-13
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-pytest-hang-on-thread-deadlock
@@ -9,15 +8,7 @@
 
 ## 目的
 
-Free-Threading テストで、テスト対象コードがスレッドデッドロック (バグ実装) に陥った場合に pytest プロセスがハングし、pytest-timeout の 10 秒で検出できない問題を解消する。デッドロックを導入した変更を CI で素早く検出できるようにする。
-
-## 優先度根拠
-
-Medium。
-
-- 通常時は発生しないが、テストが検出すべき「デッドロック」というバグ症状を、テスト自体がハングして検出できないのは本末転倒。
-- CI ではジョブタイムアウト (wheel.yml の `timeout-minutes`) まで検出が遅れ、デッドロックを含む変更のマージ事故につながる。
-- 修正はテスト側の終了待ち構造の変更のみで、実装コードには影響しない。
+Free-Threading テストで、テスト対象コードがスレッドデッドロック (バグ実装) に陥った場合に pytest プロセスがハングし、pytest-timeout の 10 秒で検出できない問題を解消する。テストが検出すべきデッドロックという症状を、テスト自体のハングによって検出できないのは本末転倒である。CI ではジョブタイムアウト (`.github/workflows/wheel.yml` の `timeout-minutes`) まで検出が遅れ、デッドロックを含む変更のマージ事故につながる。
 
 ## 現状
 
@@ -30,6 +21,8 @@ pytest-timeout の signal 方式は、タイムアウト時に SIGALRM でテス
 関連する既知の制約として、pytest-timeout の signal 方式は Python レベルの実行中しかシグナルを処理できない点は issues/closed/0016-test-add-pytest-timeout-config.md の注記にもあるが、本 issue は「設定不足」ではなく「スレッド join によるハング」が問題であり、別の対象である。Windows では thread 方式が既定でタイムアウト時にプロセス全体を強制終了するため、この問題は当てはまらない。
 
 ## 設計方針
+
+対応はテスト側の終了待ち構造の変更のみとし、実装コードには影響を与えない。
 
 ### 方針 A: ワーカー完了待ちをタイムアウト付きにし、ハング時に失敗として報告する
 

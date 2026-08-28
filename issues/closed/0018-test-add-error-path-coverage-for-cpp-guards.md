@@ -1,9 +1,7 @@
 # C++ 側の破損データ検出 / 例外パスの単体テストが欠如している
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/test-add-error-path-coverage-for-cpp-guards
 - Polished: {YYYY-MM-DD}
 
@@ -11,14 +9,7 @@
 
 C++ 実装の防御コード (`kMaxSampleSize` 検出、`kMaxSeekPosition` 検出、無限ループ検出 10000 回上限、HEV1/HVC1 の `nalu_types` / `nalu_data` 長さ不一致例外、`Invalid track kind` 例外、`Unsupported sample entry type` 例外、Muxer/Demuxer の `closed` チェック) の単体テストが 1 件も存在しない状態を解消する。
 
-## 優先度根拠
-
-High。
-
-- これらの防御コードは「破損 MP4 に対する安全網」として実装されており、`src/mp4_ext.cpp:929-963` は upstream (mp4-rust) のバグ回避ワークアラウンドと明記されている。
-- テストがないため、mp4-rust への更新や C++ 側リファクタで防御コードが機能停止しても検知不能。
-- fuzzing で偶然ヒットする可能性はあるが、hypothesis database (`.hypothesis/examples/`) は `.gitignore` (14 行) で管理外のため CI では再現しない。
-- 修正コストは中程度 (テストデータ準備 + 単体テスト追加)。
+これらの防御コードは「破損 MP4 に対する安全網」として実装されており、upstream (mp4-rust) のバグ回避ワークアラウンドとして明記されたものもある。テストがないため、mp4-rust への更新やリファクタで防御コードが機能停止しても検知不能だった。fuzzing で偶然ヒットする可能性はあるが、hypothesis database は `.gitignore` で管理外のため CI では再現しない。
 
 ## 現状
 

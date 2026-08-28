@@ -1,22 +1,13 @@
 # Mp4DemuxSample に frozen が付いていない (CODEBASE.md 規約違反)
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/refactor-add-frozen-to-mp4-demux-sample
 - Polished: 2026-08-15
 
 ## 目的
 
-`CODEBASE.md` の「Muxer / Demuxer / DemuxSample の pyclass は `frozen, skip_from_py_object` を付ける」という規約に、`Mp4DemuxSample` のみ違反している状態を解消する。
-
-## 優先度根拠
-
-Medium。
-
-- `CODEBASE.md` の pyclass 規約違反 (Free-Threading 環境では PyCell の borrow が GIL で保護されないため、frozen (borrow 不使用) + Mutex による interior mutability が安全になる点も関連)
-- 修正コストは小 (pyclass 属性への 1 語追加)
+`CODEBASE.md` の「Muxer / Demuxer / DemuxSample の pyclass は `frozen, skip_from_py_object` を付ける」という規約に、`Mp4DemuxSample` のみ違反している状態を解消する。Free-Threading 環境では PyCell の borrow が GIL で保護されないため、frozen (borrow 不使用) + Mutex による interior mutability と安全性の観点からも規約どおり揃える。
 
 ## 現状
 

@@ -1,22 +1,13 @@
 # test_mp4.py の try/except + assert False パターンを pytest.raises に置き換える
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-replace-try-except-with-pytest-raises
 - Polished: 2026-08-15
 
 ## 目的
 
-`tests/test_mp4.py` の `test_track_metadata_invalid_language` が `CODEBASE.md` の「明確な理由がない限りは try/expect をテストでは利用しないこと」に違反している状態を解消する。
-
-## 優先度根拠
-
-Low。
-
-- 単一テストのスタイル修正で、機能への影響はゼロ
-- 修正コストは小 (1 テストの書き換え)
+`tests/test_mp4.py` の `test_track_metadata_invalid_language` が `CODEBASE.md` の「明確な理由がない限りは try/expect をテストでは利用しないこと」に違反している状態を解消する。単一テストのスタイル修正で、機能への影響はゼロである。
 
 ## 現状
 

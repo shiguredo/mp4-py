@@ -1,6 +1,5 @@
 # 型スタブ (.pyi) に Mp4Exception が含まれないため型チェッカから解決できない
 
-- Priority: Medium
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/add-pyi-exception-stub

@@ -1,6 +1,5 @@
 # prop_error.py の 2 テストが例外を握りつぶしたまま残っている
 
-- Priority: Medium
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-prop-error-exception-swallowing

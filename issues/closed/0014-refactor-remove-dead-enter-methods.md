@@ -1,22 +1,13 @@
 # PyMp4FileDemuxer::enter / PyMp4FileMuxer::enter は使われていないデッドコード
 
-- Priority: Low
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-remove-dead-enter-methods
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-`PyMp4FileDemuxer::enter()` / `PyMp4FileMuxer::enter()` は定義されているが、対応する `__enter__` バインディングは lambda で置き換えられており、これらのメソッドは一切呼ばれない。デッドコードを削除して意図を明確にする。
-
-## 優先度根拠
-
-Low。
-
-- 機能上のバグではないが、コードを読む際に「なぜ定義しているのに使われていないのか」で混乱する。
-- 修正コストは 2 メソッド削除だけで完結する。
+`PyMp4FileDemuxer::enter()` / `PyMp4FileMuxer::enter()` は定義されているが、対応する `__enter__` バインディングは lambda で置き換えられており、これらのメソッドは一切呼ばれない。「なぜ定義しているのに使われていないのか」で読む人を混乱させるため、デッドコードを削除して意図を明確にする。
 
 ## 現状
 

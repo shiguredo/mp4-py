@@ -1,23 +1,13 @@
 # Mp4SampleEntryStpp が null 文字入り入力で Rust panic する
 
-- Priority: High
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-stpp-panic-on-null-characters
 - Polished: 2026-08-15
 
 ## 目的
 
-`Mp4SampleEntryStpp` に null 文字を含む `namespace` / `schema_location` / `auxiliary_mime_types` を渡すと、`append_sample` 時に PyO3 経由の Rust panic (PanicException) が発生するバグを解消する。ユーザー入力由来のデータでパニックを起こさず、通常の例外として報告する。
-
-## 優先度根拠
-
-High。
-
-- ユーザー入力で到達可能な Rust panic であり、PyO3 の `PanicException` は `BaseException` のため `except Exception` で捕捉できない (通常の例外と挙動が異なる)
-- 同一ファイルの `Mp4TrackMetadata::to_core` は `PyValueError` に正しく変換しており、エラー処理が不整合
-- 修正コストは小 (new への検証追加 + テスト)
+`Mp4SampleEntryStpp` に null 文字を含む `namespace` / `schema_location` / `auxiliary_mime_types` を渡すと、`append_sample` 時に PyO3 経由の Rust panic (PanicException) が発生するバグを解消する。ユーザー入力由来のデータでパニックを起こさず、通常の例外として報告する。`PanicException` は `BaseException` 側のため `except Exception` で捕捉できず、通常の例外と挙動が異なる点が特に問題だった。
 
 ## 現状
 

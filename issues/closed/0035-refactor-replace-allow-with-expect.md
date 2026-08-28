@@ -1,22 +1,13 @@
 # src/lib.rs の #[allow(...)] を #[expect(...)] に置き換える (発火しない 1 箇所は削除)
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/refactor-replace-allow-with-expect
 - Polished: 2026-08-15
 
 ## 目的
 
 `shiguredo-rust` スキルの「`#[allow(...)]` を使わないこと（例外なし）」「lint 警告を抑制する必要があるときは必ず `#[expect(...)]` を使うこと」という規約に、`src/lib.rs` の 11 箇所が違反している状態を解消する。`#[expect]` にすることで、lint が発火しなくなった (不要になった) ときに検出できるようになる。
-
-## 優先度根拠
-
-Low。
-
-- 規約違反だが機能への影響はゼロ
-- 修正コストは小 (属性の置換 10 箇所 + 削除 1 箇所)
 
 ## 現状
 

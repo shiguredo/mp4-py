@@ -1,23 +1,13 @@
 # bench スクリプトの sys._is_gil_enabled() が Python 3.12 で AttributeError になる
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-bench-gil-detection
 - Polished: 2026-08-15
 
 ## 目的
 
-`bench/` の 2 スクリプトが Python 3.12 (GIL 有効) で起動直後に `AttributeError` で落ちる問題を解消し、対応 Python バージョン全てで実行できるようにする。
-
-## 優先度根拠
-
-Low。
-
-- プロジェクトの最小対応バージョン (Python 3.12) で bench が即死する割れ窓
-- 静的解析有効化の別 issue (0038) が ty の 4 diagnostics のうち 2 件の解消を本 issue に委任しており、0038 の実装順序 1 に位置づけられている
-- 修正コストは小 (2 ファイルの hasattr ガード追加)
+`bench/` の 2 スクリプトが Python 3.12 (GIL 有効) で起動直後に `AttributeError` で落ちる問題を解消し、対応 Python バージョン全てで実行できるようにする。プロジェクトの最小対応バージョンで bench が即死する割れ窓であり、静的解析有効化の別 issue (0038) が ty の 4 diagnostics のうち 2 件の解消を本 issue に委任していた (0038 の実装順序 1)。
 
 ## 現状
 

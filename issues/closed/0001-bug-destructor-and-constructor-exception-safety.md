@@ -1,9 +1,7 @@
 # Muxer / Demuxer のデストラクタ・コンストラクタで例外が漏れリソースが破壊される
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-nanobind-lifecycle-exception-safety
 - Polished: {YYYY-MM-DD}
 
@@ -14,16 +12,7 @@ nanobind ラッパーである `PyMp4FileMuxer` / `PyMp4FileDemuxer` のライ�
 1. デストラクタから C++ 例外が漏れて `std::terminate` を招く経路がある
 2. コンストラクタで生ポインタ `muxer_` / `demuxer_` を確保した後に例外が発生すると解放漏れ (メモリリーク) が起きる
 
-Python 側の `with` 文でハンドリングされずに GC 経由で `__del__` が呼ばれた場合や、コンストラクタ中の I/O エラー・破損データ検出時に、プロセスが `abort()` する / mp4-rust 側のリソースが取り残される事象を防止する。
-
-## 優先度根拠
-
-High。
-
-- デストラクタから例外が漏れると **C++11 以降のデフォルトである `noexcept(true)` に反し `std::terminate` 直行**。ユーザーアプリケーションが単なる `RuntimeError` を期待しているだけで、プロセスごと落ちる。
-- 一度失敗した Muxer を GC が回収するタイミングでプロセスが落ちるため、原因究明が困難。
-- コンストラクタ側のリークは、Muxer 初期化失敗を再試行するアプリケーションで累積するとプロセスメモリを圧迫する。
-- 実装は既存の `close()` / `finalize_internal()` を変更するだけで完結し、影響範囲が nanobind ラッパー内に閉じる。
+Python 側の `with` 文でハンドリングされずに GC 経由で `__del__` が呼ばれた場合や、コンストラクタ中の I/O エラー・破損データ検出時に、プロセスが `abort()` する / mp4-rust 側のリソースが取り残される事象を防止する。失敗した Muxer を GC が回収するタイミングでプロセスが落ちるため、原因究明が困難である点も致命的だった。
 
 ## 現状
 

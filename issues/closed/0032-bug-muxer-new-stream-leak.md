@@ -1,9 +1,7 @@
 # Mp4FileMuxer::new のエラーパスで開いたストリームがリークする
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: 2026-08-15
-- Model: Opus 4.7
 - Branch: feature/fix-muxer-new-stream-leak
 - Polished: {YYYY-MM-DD}
 

@@ -1,23 +1,13 @@
 # nb::ft_mutex を保持したまま Python コールバックを呼び出しており再入デッドロックの可能性
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-lock-held-during-python-callbacks
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-`PyMp4FileDemuxer` / `PyMp4FileMuxer` の各メソッドが `nb::ft_lock_guard lock(mutex_)` を保持したまま Python コールバック (`input_stream_.attr("seek/read/close")` / `output_stream_.attr("tell/write/seek/close")` 等) を呼んでおり、コールバックから同じインスタンスの別メソッドが再入すると `nb::ft_mutex` は非再入的なため自己デッドロックする。ラップされたストリームや監査フックからの再入で発火するため、Free-Threading ビルドで顕在化する。
-
-## 優先度根拠
-
-High。
-
-- Python 側で「stream をラップして書き込みを監視する」「stream.close() で cleanup 処理を挟む」等の実装は珍しくない。
-- 例: `class WrappedIO: def write(self, b): mux.append_sample(...)` のようなラップを渡されると、`append_sample` 内の `output_stream_.attr("write")` (`src/mp4_ext.cpp:1469`) から再入 `append_sample` に入り、`nb::ft_mutex` は非再入なので **プロセス全体がフリーズ** する。
-- デッドロックは検出が難しく、原因追跡に時間がかかる。ドキュメントで禁止するだけでもよいが、実装で改善する余地がある。
+`PyMp4FileDemuxer` / `PyMp4FileMuxer` の各メソッドが `nb::ft_lock_guard lock(mutex_)` を保持したまま Python コールバック (`input_stream_.attr("seek/read/close")` / `output_stream_.attr("tell/write/seek/close")` 等) を呼んでおり、コールバックから同じインスタンスの別メソッドが再入すると `nb::ft_mutex` は非再入的なため自己デッドロックする。ラップされたストリームや監査フックからの再入で発火するため、Free-Threading ビルドで顕在化する。ストリームをラップして書き込みを監視する、`close()` に cleanup を挟むといった実装は珍しくなく、かつデッドロックは検出が難しく原因追跡に時間がかかる。
 
 ## 現状
 

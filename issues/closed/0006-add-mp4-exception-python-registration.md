@@ -1,28 +1,17 @@
 # Mp4Exception を Python 側でカスタム例外として捕捉できるようにする
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/add-mp4-exception-python-registration
 - Polished: 2026-08-12
 
 ## 目的
 
-破損 MP4 データの検出エラーを Python 側で `mp4.Mp4Exception` として型分類できるようにする。`try: ... except mp4.Mp4Exception:` の形でユーザーアプリが破損データ由来のエラーを捕捉し、その他のエラー (内部状態エラー・入力バリデーション) と区別できるようにする。
-
-## 優先度根拠
-
-High。
-
-- 現状は `src/lib.rs` の `map_err` が shiguredo_mp4 の全エラーを一律 `PyRuntimeError` (`mp4 error: {e}`) に変換しており、破損 MP4 の検出 (`Sample data size too large (corrupted data?)` 等) と内部状態エラー (`muxer/demuxer is closed`、`poisoned_err`) を型で区別できない。
-- PyO3 移行前 (nanobind 時代) は C++ 側の `Mp4Exception` を登録する想定だったが、PyO3 完全移行で C++ 実装は消滅し、Python 公開例外は未実装のまま残っている。
-- 破損 MP4 の検出と内部バグをアプリで分類したい要求は自然に発生する (破損データの報告と、ライブラリ側の問題の報告を分けたい)。
-- 修正コストは小〜中程度 (`create_exception!` による例外定義 + `map_err` の変換分岐 + Python 側 re-export)。
+破損 MP4 データの検出エラーを Python 側で `mp4.Mp4Exception` として型分類できるようにする。`try: ... except mp4.Mp4Exception:` の形でユーザーアプリが破損データ由来のエラーを捕捉し、その他のエラー (内部状態エラー・入力バリデーション) と区別できるようにする。破損データの報告とライブラリ側の問題の報告を分けたい要求はアプリ側で自然に発生する。
 
 ## 現状
 
-`src/lib.rs` の `map_err` 関数が shiguredo_mp4 の全エラーを `PyRuntimeError` に変換する。カスタム例外は定義されておらず (`create_exception!` は 0 件)、Python 側 (`python/mp4/__init__.py`) にも `Mp4Exception` は含まれない。
+`src/lib.rs` の `map_err` 関数が shiguredo_mp4 の全エラーを `PyRuntimeError` (`mp4 error: {e}`) に変換しており、破損 MP4 の検出と内部状態エラーを型で区別できない。カスタム例外は定義されておらず (`create_exception!` は 0 件)、Python 側 (`python/mp4/__init__.py`) にも `Mp4Exception` は含まれない。PyO3 移行前 (nanobind 時代) は C++ 側の `Mp4Exception` を登録する想定だったが、PyO3 完全移行で C++ 実装は消滅し、Python 公開例外は未実装のまま残っていた。
 
 破損データ検出に関わるエラーメッセージは以下 (src/lib.rs で実在確認済み):
 

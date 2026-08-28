@@ -1,27 +1,13 @@
 # mp4_ext.cpp 2189 行の一枚岩を分割し、サンプルエントリー 9 種の三重構造を整理する
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-split-mp4-ext-and-sample-entry-scaffolding
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-`src/mp4_ext.cpp` は 2189 行 (NB_MODULE 内だけで 622 行) の一枚岩。サンプルエントリー 9 種すべてが「struct 定義 + from_raw + convert + binding」の三重〜四重構造で重複しており、1 コーデック追加や既存フィールド追加のたびに 4 箇所 (`AGENTS.md`「If it hurts, do it more often」に反する) を触る必要がある。ファイル分割と共通化で保守性を上げる。
-
-## 優先度根拠
-
-Medium。
-
-- 現時点で機能上のバグではないが、以下のインパクトがある:
-  - ビルド時間: 単一 .cpp 2189 行の再コンパイルが常に発生する
-  - レビュー時間: PR 差分がファイル横断で見づらい
-  - コンフリクト: 同ファイルへの並行変更が起きる
-  - 追加コスト: 新規コーデック追加時に必ず 4 箇所を触る
-- 修正コストは大きい (ファイル分割 + template 化) がテストで担保できる。
-- `issues/0011-refactor-hevc-hev1-hvc1-duplication.md` の後続作業として位置づけ、まとめて実施することを推奨。
+`src/mp4_ext.cpp` は 2189 行 (NB_MODULE 内だけで 622 行) の一枚岩。サンプルエントリー 9 種すべてが「struct 定義 + from_raw + convert + binding」の三重〜四重構造で重複しており、1 コーデック追加や既存フィールド追加のたびに 4 箇所 (`AGENTS.md`「If it hurts, do it more often」に反する) を触る必要がある。ファイル分割と共通化で保守性を上げる。機能上のバグはないが、単一 .cpp の再コンパイルによるビルド時間、ファイル横断で見づらい PR 差分、同ファイルへの並行変更によるコンフリクトが継続的に効く。
 
 ## 現状
 

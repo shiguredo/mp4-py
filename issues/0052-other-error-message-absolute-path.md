@@ -1,6 +1,5 @@
 # パースエラーメッセージにビルド環境の絶対パスが露出する
 
-- Priority: Low
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-error-message-absolute-path

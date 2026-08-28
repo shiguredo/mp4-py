@@ -1,22 +1,13 @@
 # Demux のパースエラーが StopIteration / 空リストに隠蔽され破損データの検知が不能
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-demux-error-swallowed
 - Polished: 2026-08-15
 
 ## 目的
 
 `Mp4FileDemuxer` が破損 MP4 / 対応外フォーマットをパースできなかったときに、エラーを報告せず「トラック 0 本」「サンプル 0 個の正常終了」として振る舞う問題を解消する。ユーザーがデータ破損を見逃さないようにする。
-
-## 優先度根拠
-
-Medium。
-
-- 破損データのパースエラーが検知不能で、ユーザーは「正常終了」と誤認する
-- 修正コストは中 (エラーパスの例外化 + 既存テストの調整 + 関連 issue との整合)
 
 ## 現状
 

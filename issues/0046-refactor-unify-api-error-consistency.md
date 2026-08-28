@@ -1,22 +1,13 @@
 # API のエラーハンドリング一貫性とコード整理を改善する
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/refactor-unify-api-error-consistency
 - Polished: 2026-08-15
 
 ## 目的
 
-`src/lib.rs` の公開 API に残るエラーハンドリングの非対称性と読みにくい実装を改善し、利用者が予測しやすい挙動に統一する。Muxer の finalize 後の中間状態の対処は、finalize 後の append_sample のロールバック破壊の修正 (0029) から委譲された項目である。その他のバグ修正は各 issue で行い、本 issue は一貫性の改善に絞る。
-
-## 優先度根拠
-
-Low。
-
-- 利用者に見える挙動変更を含むが、通常の使用経路では発生しないエッジケースの改善
-- 修正コストは中 (複数項目の変更 + テスト調整)
+`src/lib.rs` の公開 API に残るエラーハンドリングの非対称性と読みにくい実装を改善し、利用者が予測しやすい挙動に統一する。Muxer の finalize 後の中間状態の対処は、finalize 後の append_sample のロールバック破壊の修正 (0029) から委譲された項目である。利用者に見える挙動変更を含むが、通常の使用経路では発生しないエッジケースの改善に留める。その他のバグ修正は各 issue で行い、本 issue は一貫性の改善に絞る。
 
 ## 現状
 

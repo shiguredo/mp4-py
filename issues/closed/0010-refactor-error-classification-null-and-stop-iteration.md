@@ -1,9 +1,7 @@
 # check_error のエラー分類 (MP4_ERROR_NULL_POINTER, stop_iteration) を見直す
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-error-classification-null-and-stop-iteration
 - Polished: {YYYY-MM-DD}
 
@@ -11,16 +9,8 @@
 
 `check_error()` のエラー分類の 2 つの問題を解消する。
 
-1. `MP4_ERROR_NULL_POINTER` を `std::invalid_argument` (Python 側 `TypeError`) にマップしているが、これはラッパー内部のバグを意味するので `RuntimeError` にマップすべき
+1. `MP4_ERROR_NULL_POINTER` を `std::invalid_argument` (Python 側 `TypeError`) にマップしているが、これはラッパー内部のバグを意味するので `RuntimeError` にマップすべき。ラッパー内部で NULL を渡すことは論理的にあり得ないにも関わらず `TypeError` が上がれば、ユーザーは「引数の型が悪い」と誤解する
 2. `check_error()` が `MP4_ERROR_NO_MORE_SAMPLES` を `nb::stop_iteration()` に変換しているが、`get_tracks()` など iter でない箇所からも `check_error()` が呼ばれるため、`StopIteration` の漏出リスクがある
-
-## 優先度根拠
-
-Medium。
-
-- 「Python に上がる例外の意味が原因を誤らせる」不具合。ラッパー内部で NULL を渡すことは論理的にあり得ないため、`TypeError` になるとユーザーが「引数の型が悪い」と誤解する。
-- `stop_iteration` は現状 `next()` 側 (`src/mp4_ext.cpp:868-870`) で `NO_MORE_SAMPLES` を先処理しているので `check_error()` の 914-915 行の分岐は実質デッドコードだが、将来の変更で顕在化しうる。PEP 479 挙動と組み合わさると混乱を招く。
-- 修正コストは switch 文の書き換えだけで完結する。
 
 ## 現状
 

@@ -1,24 +1,15 @@
 # Free-Threading で def_rw で公開する複合型フィールドが nb::lock_self なしで race する
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-free-threading-def-rw-unprotected-fields
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-nanobind の `def_rw` で公開している `std::vector<nb::bytes>` / `std::string` / `std::optional<...>` などの複合型フィールドに `nb::lock_self()` が付いておらず、Free-Threading ビルドで複数スレッドから同時アクセスすると heap-use-after-free / bad refcount / データ破壊が起きる可能性を解消する。
+nanobind の `def_rw` で公開している `std::vector<nb::bytes>` / `std::string` / `std::optional<...>` などの複合型フィールドに `nb::lock_self()` が付いておらず、Free-Threading ビルドで複数スレッドから同時アクセスすると heap-use-after-free / bad refcount / データ破壊が起きる可能性を解消する。Free-Threading ビルドを公式にサポートしている以上、公開フィールドは Free-Threading 安全である必要がある。
 
-## 優先度根拠
-
-High。
-
-- `CMakeLists.txt:105` の `FREE_THREADED` 指定により Free-Threading ビルドを公式にサポートしている以上、公開フィールドは Free-Threading 安全である必要がある。
-- Python 側の期待: `sample_entry.sps_data = [...]` と `for sps in sample_entry.sps_data: ...` を別スレッドから並列に実行しても壊れない (これは Python の通常の期待動作)。
-- 現在の実装ではロックがないため、`std::vector` の move-assign 中に古い vector が破棄されつつ、getter が返した `const std::vector<nb::bytes>&` を Python 変換する経路と衝突すると、heap-use-after-free。`std::string kind` も SBO (Small Buffer Optimization) の切り替えでポインタが飛ぶ。
-- 症状は Muxer 側 `SampleEntryConverter::convert` が渡された `entry` を isinstance 判定 + cast → `entry.sps_data` を舐めるループの中で起きうるため、実運用パスで発火する。
+Python 側の期待として、`sample_entry.sps_data = [...]` と `for sps in sample_entry.sps_data: ...` を別スレッドから並列に実行しても壊れてはならない (Python としての通常の期待動作)。
 
 ## 現状
 
@@ -37,6 +28,8 @@ nanobind の `def_rw` 実装は `nb_class.h:703-719` で `def_prop_rw` に単純
 - 2140-2154: MuxSample `track_kind` (`std::string`) / `sample_entry` (`nb::object`) / `data` (`nb::bytes`)
 
 対して `def_ro` 公開の `PyMp4DemuxSample` はミューテーションを禁じている (`src/mp4_ext.cpp:2060-2073`)。API 対称性としても不整合。
+
+ロックがないため、`std::vector` の move-assign 中に古い vector が破棄されつつ、getter が返した `const std::vector<nb::bytes>&` を Python 変換する経路と衝突すると heap-use-after-free になる。`std::string kind` も SBO (Small Buffer Optimization) の切り替えでポインタが飛ぶ。症状は Muxer 側 `SampleEntryConverter::convert` が渡された `entry` を isinstance 判定 + cast して `entry.sps_data` を舐めるループの中で起きうるため、実運用パスで発火しうる。
 
 ## 設計方針
 

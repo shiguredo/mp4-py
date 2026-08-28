@@ -1,22 +1,13 @@
 # Free-Threading wheel の ubuntu / windows ビルドでテストが実行されない
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/add-free-threading-wheel-tests
 - Polished: 2026-08-15
 
 ## 目的
 
-`.github/workflows/wheel.yml` の Free-Threading (Python 3.14t) ジョブのうち、ubuntu / windows でビルドのみが行われテストが実行されていない状態を解消し、全プラットフォームで 3.14t の動作を検証する。
-
-## 優先度根拠
-
-Medium。
-
-- macOS のみの検証ではプラットフォーム依存の問題 (例: pytest-timeout の thread 方式は Windows で既定となり、タイムアウト時にプロセス全体を強制終了する挙動) を検出できない
-- 修正コストは小 (テストステップの追加)
+`.github/workflows/wheel.yml` の Free-Threading (Python 3.14t) ジョブのうち、ubuntu / windows でビルドのみが行われテストが実行されていない状態を解消し、全プラットフォームで 3.14t の動作を検証する。macOS のみの検証ではプラットフォーム依存の問題 (例: pytest-timeout の thread 方式は Windows で既定となり、タイムアウト時にプロセス全体を強制終了する挙動) を検出できない。
 
 ## 現状
 

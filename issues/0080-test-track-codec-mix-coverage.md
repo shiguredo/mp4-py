@@ -1,7 +1,7 @@
 # トラック内のコーデック混在の挙動をテストで固定する
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD
+- Completed: {YYYY-MM-DD}
 - Branch: feature/test-track-codec-mix-coverage
 - Polished: {YYYY-MM-DD}
 - Milestone: 2026.2.0

@@ -1,23 +1,13 @@
 # Free-Threading で Mp4DemuxSample と Demuxer が共有する input_stream のレース (実装済み・テスト未達)
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-08-13
-- Model: Opus 4.7
 - Branch: feature/fix-free-threading-shared-input-stream-race
 - Polished: 2026-08-12
 
 ## 目的
 
-Free-Threading (Python 3.14t) で、Demuxer と `Mp4DemuxSample` が共有する input_stream (Python file object) への `seek` / `read` が race し、別サンプルのデータを返す問題の回帰テストを追加する。実装は PyO3 移行時に完了済みであり、本 issue の残作業は検証テストのみ。
-
-## 優先度根拠
-
-High。
-
-- mp4-py は Free-Threading ビルド (Python 3.14t) を正式サポート対象としている (CODEBASE.md の Free-Threading 節)。
-- 症状はデータの静かな取り違えで、テスト・検証で気付かない可能性が高い。
-- 実装は完了済みだが、それを保証するテストが存在しない。
+Free-Threading ビルド (Python 3.14t) は `CODEBASE.md` の Free-Threading 節が定める正式サポート対象である。その環境で、Demuxer と `Mp4DemuxSample` が共有する input_stream (Python file object) への `seek` / `read` が race し、別サンプルのデータを返す問題の回帰テストを追加する。症状はデータの静かな取り違えであり、テスト・検証で気付きにくい点が危険だった。実装は PyO3 移行時に完了済みであり、本 issue の残作業は検証テストのみ。
 
 ## 現状
 
@@ -53,12 +43,6 @@ PyO3 移行時 (コミット 5694230) に、issue の設計方針 A 相当の実
   - 検証はテスト 1 と同じく、全サンプルの `.data` が期待値と全バイト一致することを確認する
   - このテストの目的は「並行 `next()` と `.data` 読み出しのストレス下で全バイト一致する」ことの検証である。サンプル取得時点で moov の読み込みは完了しているため、`feed_required_input` との I/O 競合が発生する構造ではない点に注意する
 - 追加テストは 3.14t (Free-Threading) 環境で実行される前提とし、CODEBASE.md の pytest 規約 (60 秒以内、`--timeout=10`) 内で完走する
-
-## 解決方法
-
-1. `tests/test_free_threading.py` に「複数サンプルを demux した後、8 スレッドから独立に `.data` を読み出して全バイト比較するテスト」を追加する
-2. `tests/test_free_threading.py` に「同一 Demuxer の `next()` を続けるスレッドと取得済みサンプルの `.data` を読むスレッドを混在させるテスト」を追加する
-3. `NO_UV_SYNC=1 uv run pytest tests/test_free_threading.py --timeout=10` で 3.14t 環境にて全通過を確認する
 
 ## 解決方法
 

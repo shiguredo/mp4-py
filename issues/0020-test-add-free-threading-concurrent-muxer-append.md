@@ -1,31 +1,21 @@
 # Free-Threading で同一 Muxer への並列 append_sample テストが欠如
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/test-add-free-threading-concurrent-muxer-append
 - Polished: {YYYY-MM-DD}
 - Milestone: 2026.2.0
 
 ## 目的
 
-`tests/test_free_threading.py` は close の並列 (`test_muxer_close_concurrent`, 204-230) と別インスタンスの並列 (`test_multiple_muxers_parallel`, 121-176) しかカバーしていない。同一 Muxer に対する `append_sample` の同時呼び出しテストが 0 件のため、Free-Threading ビルドでの正しさが検証されていない。
-
-## 優先度根拠
-
-Medium。
-
-- `CMakeLists.txt:105` `FREE_THREADED` 指定により Free-Threading ビルドを公式にサポートしている。
-- 実装は `nb::ft_mutex mutex_` (`src/mp4_ext.cpp:1520`) を `append_sample` 冒頭 (1460) で取得しているので、同一 Muxer への並列 append は逐次化される設計。しかし出力ストリーム (`output_stream_`) の `tell` / `write` は Python 側 GIL 相当のロックが Free-Threading では無くなる可能性があり、テストで動作確認する価値がある。
-- `issues/0007-bug-lock-held-during-python-callbacks.md` (ロック再入デッドロック) の対応前後で挙動が変わる可能性があるため、回帰検出用にも有用。
+Free-Threading ビルドは `CODEBASE.md` の Free-Threading 節が定めるサポート対象であり、同一 Muxer に対する `append_sample` の同時呼び出しを検証する必要がある。ところが `tests/test_free_threading.py` は `test_muxer_close_concurrent` による close の並列と、`test_multiple_muxers_parallel` による別インスタンスの並列しかカバーしていない。同一 Muxer に対する `append_sample` の同時呼び出しテストが 0 件のため、Free-Threading ビルドでの正しさが検証されていない。`CODEBASE.md` に「pyo3 0.29 では 3.14t 環境で並列に append_sample を回すとスケーリングが悪化する既知事象あり」と記録されている通り、この経路は実測上の問題が既知であり、回帰を検出するテストが特に価値を持つ。
 
 ## 現状
 
 `tests/test_free_threading.py` にある関連テスト:
 
-- `test_muxer_close_concurrent` (204-230): 8 スレッドから close を並列に呼ぶ
-- `test_multiple_muxers_parallel` (121-176): 別インスタンスの Muxer を並列に動かす
+- `test_muxer_close_concurrent`: 8 スレッドから close を並列に呼ぶ
+- `test_multiple_muxers_parallel`: 別インスタンスの Muxer を並列に動かす
 
 同一 Muxer に対する `append_sample` の並列呼び出しは検証なし。ロックで直列化される想定だが、次のケースが未検証:
 1. 8 スレッドが同一 Muxer に append_sample を呼び、全サンプルが正しく mux される
@@ -93,7 +83,6 @@ def test_muxer_concurrent_append() -> None:
             f"サンプルデータが破損: {prefix!r}"
 ```
 
-**注意**: 上記テストは Python 側で `threading.Lock` を追加している。これは `append_sample` の並列呼び出しが本質的に seekable stream に対する `tell` + `write` を必要とし、`output_stream_` の状態を排他しないと data_offset がずれるため。純粋に「Muxer 内部ロックが機能する」ことを検証したいなら、Python 側ロックを外して失敗を許容するテストを別に用意する。
+**注意**: 上記テストは Python 側で `threading.Lock` を追加している。これは `append_sample` の並列呼び出しが本質的に seekable stream に対する `tell` + `write` を必要とし、`Mp4FileMuxer` が保持するストリーム (`stream`) の状態を排他しないと data_offset がずれるため。純粋に「Muxer 内部ロックが機能する」ことを検証したいなら、Python 側ロックを外して失敗を許容するテストを別に用意する。
 
-2. `issues/0005-bug-free-threading-def-rw-unprotected-fields.md` の対応後に実施することを推奨
-3. 実行時間が長い場合は `@pytest.mark.timeout(30)` を付ける
+2. 実行時間が長い場合は `@pytest.mark.timeout(30)` を付ける

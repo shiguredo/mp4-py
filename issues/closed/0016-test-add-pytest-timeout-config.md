@@ -1,28 +1,15 @@
 # pytest のタイムアウトが pyproject.toml に未設定 (規約違反)
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/add-pytest-timeout-config
 - Polished: 2026-08-12
 
 ## 目的
 
-`pytest-timeout` を依存に持ちながら、pytest 実行時のタイムアウトが `pyproject.toml` に一切設定されていない状態を解消する。CODEBASE.md の pytest 規約に準拠させ、破損 MP4 テスト等でハングした場合のセーフティネットを確立する。
+`pytest-timeout` を依存に持ちながら、pytest 実行時のタイムアウトが `pyproject.toml` に一切設定されていない状態を解消する。CODEBASE.md の pytest 規約である「pytest 実行時長くても 60 秒以内にすること」「pytest のタイムアウトは pytest-timeout を利用すること」「`pytest --timeout=10` のように指定すること」に準拠させ、破損 MP4 テスト等でハングした場合のセーフティネットを確立する。ローカル実行 (`NO_UV_SYNC=1 uv run pytest tests/`) ではコマンドラインからタイムアウトが渡らず、ハング時の保険がなかった。
 
 なお、pytest-timeout の signal 方式は Python レベルの実行中しかシグナルを処理できないため、Rust 拡張 (PyO3) 内部で GIL を保持したまま無限ループ・デッドロックした場合はタイムアウトで中断できない。その場合は CI のジョブタイムアウト (`timeout-minutes`) と手動での強制終了が最終手段となる。Windows では thread 方式が既定で、タイムアウト時にプロセス全体を強制終了するためこの限界は当てはまらない。
-
-## 優先度根拠
-
-High。
-
-- CODEBASE.md の pytest 規約違反:
-  - 「pytest 実行時長くても 60 秒以内にすること」
-  - 「pytest のタイムアウトは pytest-timeout を利用すること」
-  - 「`pytest --timeout=10` のように指定すること」
-- ローカル実行 (`NO_UV_SYNC=1 uv run pytest tests/`) ではコマンドラインからタイムアウトが渡らず、テストがハングした場合の保険がない
-- 修正コストは pyproject.toml への 1 行追加のみ
 
 ## 現状
 

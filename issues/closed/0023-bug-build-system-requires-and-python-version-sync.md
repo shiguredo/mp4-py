@@ -1,26 +1,16 @@
 # pyproject.toml build-system.requires と .python-version が README / CHANGES と乖離
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-build-system-requires-and-python-version-sync
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-以下 2 つのビルド環境設定の乖離を修正する。
+以下 2 つのビルド環境設定の乖離を修正する。ビルド環境の再現性に関わる問題であり、CI と開発環境で挙動が食い違う可能性がある。
 
-1. `pyproject.toml:35` の `build-system.requires` が `scikit-build-core` にバージョン下限を指定していない (`CHANGES.md:27` の記載と乖離)
-2. `.python-version` が `3.12` になっており、README の対応バージョン先頭 (`3.14`) と乖離
-
-## 優先度根拠
-
-Medium。
-
-- ビルド環境の再現性に関わる問題。CI と開発環境で挙動が食い違う可能性がある。
-- `.python-version` は開発者ローカルのデフォルト Python 版を決めるので、Free-Threading (`3.14t`) や 3.14 系固有の問題が拾えないリスクがある。
-- CHANGES.md 記載と実装が乖離しているのは shiguredo-changelog 規約への実質的な違反。
+1. `pyproject.toml:35` の `build-system.requires` が `scikit-build-core` にバージョン下限を指定していない (`CHANGES.md:27` の記載と乖離)。記載と実装が乖離しているのは shiguredo-changelog 規約への実質的な違反である
+2. `.python-version` が `3.12` になっており、README の対応バージョン先頭 (`3.14`) と乖離。`.python-version` は開発者ローカルのデフォルト Python 版を決めるため、Free-Threading (`3.14t`) や 3.14 系固有の問題が拾えないリスクがある
 
 ## 現状
 

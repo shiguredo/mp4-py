@@ -1,9 +1,7 @@
 # Muxer / Demuxer の境界で size_t → uint32_t / int32_t のサイレント切り詰めが起きる
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-integer-truncation-in-mux-demux-boundaries
 - Polished: {YYYY-MM-DD}
 
@@ -11,16 +9,10 @@
 
 C++ ラッパーと mp4-rust C API の境界で、`size_t` (通常 64 bit) を `uint32_t` に無検査キャスト、`size_t` を `int32_t` に無検査キャストしている 2 箇所を修正し、4 GiB 超の入出力データでのサイレントなデータ破壊 / 誤動作を防ぐ。
 
-- Muxer 側: `sample.data.size()` を `uint32_t` に切り詰めることで、書き込み位置と Muxer 内部のトラッキング位置が乖離し、MP4 ファイルが破損する
-- Demuxer 側: `data.size()` を `uint32_t` へ切り詰め、加えて `int32_t` にキャストして比較することで、`data.size() > 2^31` の場合に負値となり EOF を偽通知する
+- Muxer 側: `sample.data.size()` を `uint32_t` に切り詰めることで、書き込み位置と Muxer 内部のトラッキング位置が乖離し、以降のサンプルすべてで `MP4_ERROR_POSITION_MISMATCH` が発生して MP4 ファイルが破損する
+- Demuxer 側: `data.size()` を `uint32_t` へ切り詰め、加えて `int32_t` にキャストして比較することで、`data.size() > 2^31` の場合に負値となり EOF を偽通知する。`required_size == -1` (ファイル末尾までの読み込み要求) と組み合わせると 4 GiB 超で必ず発火し、実際は EOF ではないのに `StopIteration` を投げて無音でサンプル取得を打ち切る
 
-## 優先度根拠
-
-High。
-
-- Muxer 側は「書き込みは全量成功しストリームは進むが、Muxer には切り捨てサイズが通知され、以降のサンプルすべてで `MP4_ERROR_POSITION_MISMATCH` が発生」する。**最終的に生成される MP4 ファイルは破損** し、症状が発生した後に再現も困難になる。
-- Demuxer 側は特に `required_size == -1` (ファイル末尾までの読み込み要求) と組み合わさると 4 GiB 超で必ず発火する。破損 MP4 を解析する内部フローで、実際は EOF ではないのに `StopIteration` を投げるため、無音でサンプル取得を打ち切る。
-- どちらも「大きなファイル」でしか顕在化しないため、通常の PBT / テストでは絶対に検出できない。放置するとリリース版で不具合の元になる。
+どちらも「大きなファイル」でしか顕在化しないため、通常の PBT / テストでは検出できない点が厄介だった。
 
 ## 現状
 

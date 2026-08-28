@@ -1,27 +1,17 @@
 # AGENTS.md / CODEBASE.md 規約違反 3 件を一括で修正 (issues 参照 / Optional / NO_UV_SYNC)
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-agents-md-compliance-violations
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-以下の 3 つの規約違反を一括で修正する。いずれも変更対象は独立しているが、修正内容が「規約違反の是正」で単純なため 1 issue にまとめる。
+以下の 3 つの規約違反を一括で修正する。いずれも変更対象は独立しているが、修正内容が「規約違反の是正」で単純なため 1 issue にまとめる。いずれも AGENTS.md / CODEBASE.md の明文規約違反であり、「一切妥協をしないこと」に反する。
 
-1. `src/mp4_ext.cpp:947` が存在しない issue ファイル `issues/infinite-loop-with-corrupted-mp4.md` を参照している (shiguredo-issues 規約違反)
+1. `src/mp4_ext.cpp:947` が存在しない issue ファイル `issues/infinite-loop-with-corrupted-mp4.md` を参照している (shiguredo-issues 規約違反)。`issues/` ディレクトリ自体が commit `81dd524` で削除された経緯があり、コメントから経緯を追跡できない状態だった。「Don't live with broken windows」にも該当する
 2. `dev.py:3, 7, 89` で `Optional` を使用している (`CODEBASE.md:20` 「`Optional` ではなく `| None` を使う」規約違反)
 3. `Makefile` の `test` ターゲットに `NO_UV_SYNC=1` が抜けている (`CODEBASE.md:37-38` 規約違反)
-
-## 優先度根拠
-
-High。
-
-- 3 つとも AGENTS.md / CODEBASE.md の明文規約違反。「一切妥協をしないこと」に反する。
-- `mp4_ext.cpp:947` の issue 参照は `issues/` ディレクトリが存在しない (`81dd524` で削除された) にも関わらずコメントが残っており、経緯を追跡できない状態。`AGENTS.md`「Don't live with broken windows」にも該当。
-- 修正コストは各項目 1〜数行の変更のみ。
 
 ## 現状
 

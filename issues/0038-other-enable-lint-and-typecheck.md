@@ -1,24 +1,13 @@
 # ruff の lint ルールがデフォルトのみ + CI に lint / typecheck ジョブがない
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/update-enable-lint-and-typecheck
 - Polished: 2026-08-15
 
 ## 目的
 
-Python 側の静的解析 (ruff) と型検査 (ty) が実質的に機能していない状態を解消し、CI で常に実行されるようにする。
-
-## 優先度根拠
-
-Medium。
-
-- shiguredo-python スキルの参考設定 (`select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PT", "ANN", "RUF"]`) に未準拠で、型注釈必須 (ANN)・pytest 規約 (PT)・import 順 (I)・PEP 604 (UP) が効いていない
-- shiguredo-python スキルは prek の最低要件に `ty check` を含んでおり、prek.toml は ty フックが欠落
-- ty が 4 diagnostics を出したままどこでも実行されない
-- 修正コストは中 (設定 + 既存違反の修正 + CI ジョブ追加)
+Python 側の静的解析 (ruff) と型検査 (ty) が実質的に機能していない状態を解消し、CI で常に実行されるようにする。shiguredo-python スキルの参考設定に未準拠で、型注釈必須 (ANN)・pytest 規約 (PT)・import 順 (I)・PEP 604 (UP) が効いていない状態を是正する。
 
 ## 現状
 

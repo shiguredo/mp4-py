@@ -1,6 +1,5 @@
 # 破損 MP4 の null 入り StppBox が黙って誤パースされる
 
-- Priority: Medium
 - Created: 2026-08-16
 - Completed: 2026-08-19
 - Branch: feature/fix-stpp-null-box-silent-misparse

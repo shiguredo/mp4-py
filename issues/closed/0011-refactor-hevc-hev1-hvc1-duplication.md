@@ -1,25 +1,13 @@
 # HEV1 / HVC1 の struct / from_raw / convert / binding が完全コピペ (200+ 行の重複)
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-hevc-hev1-hvc1-duplication
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-`src/mp4_ext.cpp` の HEV1 / HVC1 サンプルエントリー実装が完全コピペ (フィールド定義 20 個、コンストラクタ引数 20 個、from_raw 40 行以上、convert 50 行以上、`.def_rw` バインディング 20 個) になっている状態を解消し、将来のフィールド追加時に片方だけ変更する事故を防ぐ。
-
-## 優先度根拠
-
-Medium。
-
-- 現時点で機能上のバグではないが、`AGENTS.md`「Don't live with broken windows」「一切妥協をしないこと」に真っ向から反する。
-- 実際に diff を取ると差分は `Hev1` / `Hvc1` の名前置換 6 行のみ。C API 側 (`mp4.h:462-486` Hev1 / `mp4.h:522-546` Hvc1) もフィールド完全一致。
-- 過去 commit `efe3934` でリファクタし `1d8145d` で revert された経緯があり、revert 理由が不明のまま重複が残っている。技術的負債として顕在化している。
-- 新規コーデック追加や既存フィールド追加の際に 6 箇所 (struct×2 + convert×2 + binding×2) を触ることになり、片方だけ変更する事故が非常に容易。
-- 修正コストは大きいがテストで担保できる。
+`src/mp4_ext.cpp` の HEV1 / HVC1 サンプルエントリー実装が完全コピペ (フィールド定義 20 個、コンストラクタ引数 20 個、from_raw 40 行以上、convert 50 行以上、`.def_rw` バインディング 20 個) になっている状態を解消し、将来のフィールド追加時に片方だけ変更する事故を防ぐ。機能上のバグはないが、`AGENTS.md` の「Don't live with broken windows」「一切妥協をしないこと」に反する技術的負債として扱う。
 
 ## 現状
 
@@ -43,6 +31,8 @@ typedef struct Mp4SampleEntryHvc1 {
   // ... 20 フィールド (完全一致)
 } Mp4SampleEntryHvc1;
 ```
+
+この重複は過去の対応履歴を持つ。commit `efe3934` で一度リファクタが実施され、commit `1d8145d` で revert されている。revert 理由が明確に記録されないまま重複が復帰していたため、改めて共通化を検討する際は revert の原因となった論点を潰す必要がある。
 
 ## 設計方針
 

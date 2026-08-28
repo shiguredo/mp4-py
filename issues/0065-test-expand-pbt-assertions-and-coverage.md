@@ -1,7 +1,7 @@
 # Hev1 / Hvc1 / Av01 / Mp4a / Flac の roundtrip 保存 PBT の assert を拡充する
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD
+- Completed: {YYYY-MM-DD}
 - Branch: feature/test-expand-pbt-assertions-and-coverage
 - Polished: {YYYY-MM-DD}
 - Milestone: 2026.2.0

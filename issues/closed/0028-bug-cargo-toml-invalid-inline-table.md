@@ -1,9 +1,7 @@
 # Cargo.toml のマルチライン inline table が TOML 1.0 違反になっている
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-cargo-toml-invalid-inline-table
 - Polished: 2026-08-15
 

@@ -1,23 +1,13 @@
 # finalize 後の append_sample 失敗時にロールバックがファイル全体を破壊する
 
-- Priority: High
 - Created: 2026-08-15
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-rollback-destroys-file-after-finalize
 - Polished: 2026-08-15
 
 ## 目的
 
-`Mp4FileMuxer` で `finalize()` を実行した後に `append_sample()` を呼ぶと、エラーが返るだけでなく、出力ファイル全体が破壊されるバグを解消する。エラーパスが出力物を静かに壊す状態を放置できないため。
-
-## 優先度根拠
-
-High。
-
-- 出力ファイルが静かに破壊される (データ損失)
-- 破壊は `reserved_moov_box_size` の値に依存せず、既定値 0 でも発生する
-- 修正コストは小 (append_sample 冒頭への finalized チェック追加 + テスト)
+`Mp4FileMuxer` で `finalize()` を実行した後に `append_sample()` を呼ぶと、エラーが返るだけでなく、出力ファイル全体が破壊されるバグを解消する。エラーパスが出力物を静かに壊す (データ損失) 状態を放置できないため。破壊は `reserved_moov_box_size` の値に依存せず、既定値 0 でも発生する。
 
 ## 現状
 

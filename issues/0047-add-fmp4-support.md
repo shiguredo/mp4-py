@@ -1,26 +1,16 @@
 # fMP4 (fragmented MP4) をサポートする (デマクサー・マルチプレクサー・種別検知を全部バインドする)
 
-- Priority: Medium
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/add-fmp4-support
 - Polished: 2026-08-15
 - Milestone: 2026.2.0
 
 ## 目的
 
-fragmented MP4 (fMP4) 関連のコア API を全てバインドして、Python 側から fMP4 の読み書き・種別検知ができるようにする。現状は fMP4 を読むとエラーもなく「サンプル 0 個の正常終了」として静かに終わるため、ユーザーが非対応を検知できない。
+fragmented MP4 (fMP4) 関連のコア API を全てバインドして、Python 側から fMP4 の読み書き・種別検知ができるようにする。fMP4 はストリーミング・ライブ配信で広く使われるフォーマットだが、現状は fMP4 を読むとエラーもなく「サンプル 0 個の正常終了」として静かに終わるため、ユーザーが非対応を検知できない。コア (`shiguredo_mp4`) 側には fMP4 関連の API が全て揃っており、未実装なのはバインディング側だけである。
 
 なお、既存の `Mp4FileDemuxer` は fMP4 に非対応のままとする (対応するのは新設の fMP4 用 API)。`Mp4FileDemuxer` に fMP4 を渡した場合は従来どおり「サンプル 0 個の正常終了」になるが、種別検知 API で fMP4 を検知できるため、誤認は回避できる。
-
-## 優先度根拠
-
-Medium。
-
-- fMP4 はストリーミング・ライブ配信で広く使われるフォーマットであり、現状は「非対応」がユーザーに検知不能 (エラーなしで 0 サンプル)
-- コア (shiguredo_mp4 2026.4.0) に fMP4 関連の API が全て存在する (確認済み)。バインディング側が未実装なだけ
-- 修正コストは大 (デマクサー 2 種・マルチプレクサー・種別検知のバインド追加 + テスト)
 
 ## 現状
 
@@ -35,7 +25,7 @@ Medium。
 
 既知の制限: コアの `Fmp4FileDemuxer` は、tfhd の `base_data_offset` フィールドを含む形式 (ファイル先頭からの絶対オフセットが記録されている形式) には対応していない (DecodeError になる)。対応対象は `base_data_offset` フィールドを含まない形式 (Fmp4SegmentMuxer が出力する形式) であり、この制限を README に明記する。`Fmp4SegmentDemuxer` 側の制限 (単一 moof + mdat ペアのみ、mdat 末尾の追加データはエラー) も README に明記する。
 
-README には fMP4 の記載がない (エラー隠蔽の解消を扱う別 issue 0036 が README に「fMP4 非対応」を明記する予定。本 issue の実装時に 0036 の記述が既にあれば「対応」へ書き換え、本 issue が先の場合は 0036 側が調整する)。
+README.md の「使い方（基本 API）」冒頭一覧に「非対応: fragmented MP4 (fMP4)」が明記されている (`Mp4FileDemuxer` は fMP4 を読み取れず、stbl が空の典型的な init segment ではエラーなく「サンプル 0 個の正常終了」になる、という記載)。本 issue の実装時にはこの記述を「対応」側へ書き換える。
 
 ## 設計方針
 
@@ -44,7 +34,7 @@ README には fMP4 の記載がない (エラー隠蔽の解消を扱う別 issu
   - `Mp4Fmp4SegmentDemuxer` (コアの `Fmp4SegmentDemuxer` のバインド): init segment / media segment の個別入力デマクス
   - `Mp4Fmp4SegmentMuxer` + `Mp4Fmp4SegmentMuxerOptions` (コアの `Fmp4SegmentMuxer` + `SegmentMuxerOptions` のバインド): fMP4 セグメント生成。`Mp4FileMuxer` / `Mp4FileMuxerOptions` のパターンを踏襲
   - `detect_mp4_file_kind(source) -> Literal["mp4", "fragmented_mp4"]` (コアの `Mp4FileKindDetector` のバインド): 種別検知関数。source は `Mp4FileDemuxer` と同じ入力形式 (path / bytes / ストリーム)
-- エラー報告は既存の `Mp4FileDemuxer` と同じ `RuntimeError` 方式とする (パースエラーの表面化 (0036) の実装後に既存パターンが変わるため、その設計に合わせる)
+- エラー報告は既存の `Mp4FileDemuxer` と同じ方式に揃える。コア由来のエラーは `map_err` 経由で `RuntimeError` (`mp4 error: ...`) とし、破損データの検出ガードは `Mp4Exception` を返す。破損データ由来エラーの型統一を扱う issue の結果には後から追従する
 - fMP4 セグメントのサンプル入出力は、既存の `Mp4MuxSample` / `Mp4DemuxSample` を再利用しない (コアの `Sample.data_offset` はセグメント payload 先頭からの相対オフセットであり、既存クラスの絶対オフセット + ストリーム前提と互換性がないため)。fMP4 用にサンプルクラスを新設するか、既存クラスを拡張するかは実装時に確定する
 - fMP4 の roundtrip テストは、`Mp4Fmp4SegmentMuxer` でセグメントを生成し、`Mp4Fmp4FileDemuxer` / `Mp4Fmp4SegmentDemuxer` でデマクスして検証する
 
@@ -56,7 +46,7 @@ README には fMP4 の記載がない (エラー隠蔽の解消を扱う別 issu
 - `detect_mp4_file_kind` で fMP4 を検知できる (通常 MP4 が `"mp4"` と検知されることも検証する。moov 発見前に EOF になる不正なファイルは `RuntimeError` になる)
 - 非 fMP4 の従来動作が変わらない (既存テストが全通過する)
 - README に fMP4 対応と既知の制限 (base_data_offset フィールドを含む形式の非対応、同一 TrackKind 1 本まで、単一 moof + mdat ペアのみ、セグメント生成の使い方) が明記される
-- 0036 が README に明記する「fMP4 非対応」の記述との整合が取れている (本 issue が先に実装された場合は 0036 側が調整する)
+- README.md の「非対応: fragmented MP4 (fMP4)」の記述が、実装した fMP4 対応の内容と整合している
 
 ## 解決方法
 

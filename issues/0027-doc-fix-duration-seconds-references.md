@@ -1,6 +1,5 @@
 # README と examples の duration_seconds が消滅 API を参照して動作しない
 
-- Priority: Medium
 - Created: 2026-08-13
 - Completed: {YYYY-MM-DD}
 - Branch: feature/update-duration-seconds-references
@@ -8,15 +7,7 @@
 
 ## 目的
 
-README.md と examples/demux.py が、PyO3 移行で消滅した API を参照したままになっている。実行時に AttributeError になるため、現在の API で動作する記載に修正する。
-
-## 優先度根拠
-
-Medium。
-
-- README のコード例をそのまま実行すると AttributeError になり、ユーザーを混乱させる。
-- examples/demux.py はトラック情報表示とサンプル情報表示の一部が壊れている。
-- 修正はドキュメントとサンプルコードのみで、ライブラリ本体には影響しない。
+README.md と examples/demux.py が、PyO3 移行で消滅した API を参照したままになっている。README のコード例をそのまま実行すると AttributeError になりユーザーを混乱させ、examples/demux.py はトラック情報表示とサンプル情報表示の一部が壊れている。現在の API で動作する記載に修正する。
 
 ## 現状
 
@@ -31,6 +22,8 @@ Medium。
 - examples/demux.py のサンプル情報表示: `sample._data_offset` / `sample._data_size`
 
 ## 設計方針
+
+対象はドキュメントとサンプルコードのみで、ライブラリ本体 (`src/lib.rs`) は変更しない。
 
 ### 方針 A: 消滅 API を現在の公開プロパティに置き換える
 

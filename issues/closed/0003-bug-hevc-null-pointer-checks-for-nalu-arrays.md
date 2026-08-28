@@ -1,23 +1,13 @@
 # HEV1 / HVC1 の from_raw で nalu_data / nalu_sizes / nalu_counts の NULL チェックが欠落
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/fix-hevc-null-pointer-checks-for-nalu-arrays
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-HEV1 / HVC1 サンプルエントリーの `from_raw` において、C API 側の `Mp4SampleEntryHev1` / `Mp4SampleEntryHvc1` が持つ複数のポインタフィールドのうち、`raw.nalu_types` のみ NULL チェックしており、`raw.nalu_data` / `raw.nalu_sizes` / `raw.nalu_counts` は NULL チェックせずに参照している。C API 契約上これらのフィールドは NULL 可能性が型で排除されていないため、破損データや上流変更で SEGV する可能性がある。同ファイル内の AVC1 実装 (`raw.sps_data && raw.sps_sizes` の複合チェック) と実装水準を揃える。
-
-## 優先度根拠
-
-High。
-
-- 破損 MP4 データを扱う経路で SEGV する可能性があり、Python プロセス全体を落とす致命的欠陥。
-- AVC1 側 (`src/mp4_ext.cpp:116, 124`) では既に複合 NULL チェックがあるにも関わらず、HEV1 / HVC1 だけで抜けている **一貫性の欠落**。同じ規約を後から追加した際の見落としと推測される。
-- 修正は極めて限定的 (条件式 2 箇所の追加) で影響範囲が閉じている。
+HEV1 / HVC1 サンプルエントリーの `from_raw` において、C API 側の `Mp4SampleEntryHev1` / `Mp4SampleEntryHvc1` が持つ複数のポインタフィールドのうち、`raw.nalu_types` のみ NULL チェックしており、`raw.nalu_data` / `raw.nalu_sizes` / `raw.nalu_counts` は NULL チェックせずに参照している。C API 契約上これらのフィールドは NULL 可能性が型で排除されていないため、破損データや上流変更で SEGV する可能性がある。破損 MP4 を扱う経路で発火すれば Python プロセス全体を落とす致命的欠陥だった。同ファイル内の AVC1 実装 (`raw.sps_data && raw.sps_sizes` の複合チェック) と実装水準を揃える。AVC1 側には既に複合チェックがあるにも関わらず HEV1 / HVC1 だけで抜けているのは、同じ規約を後から追加した際の見落としと推測される。
 
 ## 現状
 

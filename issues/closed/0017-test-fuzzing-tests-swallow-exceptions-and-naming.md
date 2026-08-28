@@ -1,9 +1,7 @@
 # test_fuzzing.py の全 fuzzing テストが例外を握りつぶす + 命名規則違反
 
-- Priority: High
 - Created: 2026-07-22
 - Completed: 2026-08-16
-- Model: Opus 4.7
 - Branch: feature/fix-fuzzing-exception-swallowing
 - Polished: 2026-08-12
 
@@ -11,18 +9,9 @@
 
 `tests/test_fuzzing.py` の 3 種類の問題を同時に解消する。
 
-1. 全 10 fuzzing テストが `except (ValueError, RuntimeError, StopIteration): pass` で例外を握りつぶし、想定外例外の検出に失敗する
-2. ファイル名・関数名が `test_` prefix なのに、実質は全て PBT (`@given` 付き) で `prop_` prefix が正しい
+1. 全 10 fuzzing テストが `except (ValueError, RuntimeError, StopIteration): pass` で例外を握りつぶし、想定外例外の検出に失敗する。CODEBASE.md の「明確な理由がない限りは try/except をテストでは利用しないこと」に違反しており、「クラッシュしなければ OK」しか検証されていない
+2. ファイル名・関数名が `test_` prefix なのに、実質は全て PBT (`@given` 付き) で `prop_` prefix が正しい。`pyproject.toml` の「Property-Based Testing (PBT) は prop_ prefix を使用する」命名規則に違反する
 3. `tests/prop_error.py` の `prop_append_after_finalize_raises_error` が `pytest.raises(Exception)` で基底クラスを受けている
-
-## 優先度根拠
-
-High。
-
-- CODEBASE.md の「明確な理由がない限りは try/except をテストでは利用しないこと」に違反
-- 現状の実装は「クラッシュしなければ OK」しか検証しておらず、想定外の例外も沈黙する
-- 命名規則 (pyproject.toml の「Property-Based Testing (PBT) は prop_ prefix を使用する」) に違反
-- 修正コストは中程度 (例外処理の書き換え + muxer テストのデータ生成修正 + リネーム)
 
 ## 現状
 

@@ -1,9 +1,7 @@
 # AVC1 High Profile と Opus input_sample_rate の PBT カバレッジを拡張する
 
-- Priority: Medium
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/test-expand-avc1-opus-pbt-coverage
 - Polished: {YYYY-MM-DD}
 - Milestone: 2026.2.0
@@ -15,18 +13,9 @@
 1. AVC1 の High Profile (100 系) と Optional フィールド (`chroma_format`, `bit_depth_luma_minus8`, `bit_depth_chroma_minus8`)
 2. Opus の `input_sample_rate=Some(値)` の roundtrip
 
-## 優先度根拠
-
-Medium。
-
-- AVC1 High Profile 系は実運用で最も使われるプロファイル (`4:2:0 8-bit` 以外の色空間・ビット深度を扱う際に必須)。`chroma_format` は AVC High Profile 系で必須フィールドだが、テストで検証されていない。
-- `mp4_ext.cpp:1159-1166` の `is_chroma_format_present` フラグと組で C API に渡す実装があるが、リグレッションが起きても検知できない。
-- Opus の `input_sample_rate` は `nb-mediasoup` など実運用で使われる可能性があり、None/Some(値) の両方を検証する必要がある。
-- 修正コストは strategy の拡張と assert 追加のみ。
-
 ## 現状
 
-### AVC1 (`tests/conftest.py:76-96`)
+### AVC1 (`tests/conftest.py` の `st_avc1_sample_entry`)
 
 ```python
 avc_profile = draw(st.sampled_from([66, 77, 88]))  # Baseline/Main/Extended のみ
@@ -34,25 +23,26 @@ avc_profile = draw(st.sampled_from([66, 77, 88]))  # Baseline/Main/Extended の�
 # chroma_format / bit_depth_luma_minus8 / bit_depth_chroma_minus8 が strategy に含まれない
 ```
 
-`prop_avc1_fields_preserved` (`tests/prop_sample_entry.py:132-138`) は上記 3 フィールドの roundtrip assert をしていない。
+`tests/prop_sample_entry.py` の `prop_avc1_fields_preserved` は上記 3 フィールドの roundtrip assert をしていない。
 
-conftest.py:84-85 のコメント「Baseline/Main/Extended のみを使用して単純化」により意図的に絞られているが、実装で最も使われる High Profile 系が対象外。
+`st_avc1_sample_entry` 内のコメント「Baseline/Main/Extended のみを使用して単純化する」により意図的に絞られているが、実装で最も使われる High Profile 系が対象外。
 
-### Opus (`tests/conftest.py:167-175`)
+### Opus (`tests/conftest.py` の `st_opus_sample_entry`)
 
 ```python
 return Mp4SampleEntryOpus(
-    channel_count=draw(...),
-    sample_rate=draw(...),
-    ...
-    input_sample_rate=None,  # ← 固定
-    output_gain=0,
+    draw(st_channel_count),
+    draw(st_sample_rate),
+    draw(st_sample_size),
+    draw(st.integers(min_value=0, max_value=65535)),
+    None,  # ← input_sample_rate が固定
+    draw(st.integers(min_value=-32768, max_value=32767)),
 )
 ```
 
-`prop_opus_fields_preserved` (`tests/prop_sample_entry.py:239-267`) も `input_sample_rate` の roundtrip assert をしていない。
+`tests/prop_sample_entry.py` の `prop_opus_fields_preserved` も `input_sample_rate` の roundtrip assert をしていない。
 
-`src/mp4_ext.cpp:1343-1344` の実装は `input_sample_rate.value_or(sample_rate)` でデフォルト化しているが、`Some(値)` を渡した場合の roundtrip 保存が検証されていない。
+`src/lib.rs` の `Mp4SampleEntryOpus::to_sample_entry` は `self.input_sample_rate.unwrap_or(self.sample_rate as u32)` でデフォルト化し、`Mp4SampleEntryOpus::from_box` は常に `Some(...)` を返すため、`Some(値)` を渡した場合の roundtrip 保存が検証されていない。
 
 ## 設計方針
 
@@ -77,7 +67,7 @@ return Mp4SampleEntryOpus(
   ))
   ```
 - `prop_opus_fields_preserved` に `input_sample_rate` の roundtrip assert を追加
-- 注意: 現状の実装は `None → sample_rate` にフォールバックするため、roundtrip では `Some(sample_rate)` として戻る。仕様として明確化 (`issues/0010-refactor-error-classification-null-and-stop-iteration.md` とは別に、Opus 側の docstring 明記が必要)
+- 注意: 現状の実装は `None → sample_rate` にフォールバックするため、roundtrip では `Some(sample_rate)` として戻る。仕様として明確化が必要 (`Mp4SampleEntryOpus` の docstring にフォールバック挙動を明記する)
 
 ## 完了条件
 
@@ -89,7 +79,7 @@ return Mp4SampleEntryOpus(
 
 ## 解決方法
 
-1. `tests/conftest.py:76-96` の `st_avc1_sample_entry` を書き換え:
+1. `tests/conftest.py` の `st_avc1_sample_entry` を書き換え:
    ```python
    @st.composite
    def st_avc1_sample_entry(draw):
@@ -108,8 +98,8 @@ return Mp4SampleEntryOpus(
            st.sampled_from([0, 2, 4]),
        ))
        return Mp4SampleEntryAvc1(
-           width=draw(st_dimension),
-           height=draw(st_dimension),
+           width=draw(st_width),
+           height=draw(st_height),
            avc_profile_indication=avc_profile,
            ...
            chroma_format=chroma_format,
@@ -117,20 +107,20 @@ return Mp4SampleEntryOpus(
            bit_depth_chroma_minus8=bit_depth_chroma,
        )
    ```
-2. `tests/prop_sample_entry.py:132-138` の `prop_avc1_fields_preserved` に以下を追加:
+2. `tests/prop_sample_entry.py` の `prop_avc1_fields_preserved` に以下を追加:
    ```python
    assert restored.chroma_format == sample_entry.chroma_format
    assert restored.bit_depth_luma_minus8 == sample_entry.bit_depth_luma_minus8
    assert restored.bit_depth_chroma_minus8 == sample_entry.bit_depth_chroma_minus8
    ```
-3. `tests/conftest.py:167-175` の `st_opus_sample_entry` を書き換え:
+3. `tests/conftest.py` の `st_opus_sample_entry` を書き換え:
    ```python
    input_sample_rate = draw(st.one_of(
        st.none(),
        st.integers(min_value=8000, max_value=192000),
    ))
    ```
-4. `tests/prop_sample_entry.py:239-267` の `prop_opus_fields_preserved` に:
+4. `tests/prop_sample_entry.py` の `prop_opus_fields_preserved` に:
    ```python
    # 現実装は None → sample_rate にフォールバックするため、
    # None 時は sample_rate と一致することを確認
@@ -139,4 +129,4 @@ return Mp4SampleEntryOpus(
    else:
        assert restored.input_sample_rate == sample_entry.input_sample_rate
    ```
-5. 上記フォールバック挙動は Mp4SampleEntryOpus の docstring に明記する (別途 `src/mp4_ext.cpp:1984` 付近)
+5. 上記フォールバック挙動は `src/lib.rs` の `Mp4SampleEntryOpus` の docstring に明記する

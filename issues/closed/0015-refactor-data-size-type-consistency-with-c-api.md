@@ -1,9 +1,7 @@
 # PyMp4DemuxSample::data_size_ の型が C API の uintptr_t と不一致
 
-- Priority: Low
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-data-size-type-consistency-with-c-api
 - Polished: {YYYY-MM-DD}
 
@@ -11,13 +9,7 @@
 
 `Mp4DemuxSample.data_size` は C API 側で `uintptr_t` (mp4.h:928) だが、C++ 側の `PyMp4DemuxSample::data_size_` は `uint64_t` (`src/mp4_ext.cpp:698`)。64bit プラットフォームでは等価だが、意図が読みにくく、将来の C API 型変更や 32bit プラットフォーム対応時に脆弱。型を揃える。
 
-## 優先度根拠
-
-Low。
-
-- 現状の対応プラットフォーム (`README.md:24-32`) は全て 64bit LP64/LLP64 なので実害はない。
-- ただし、C API 側の型変更に追従漏れが起きる潜在リスク。`Mp4FileMuxerOptions.reserved_moov_box_size` の `u64 → u32` 変更 (`CHANGES.md:14-16`) と同種の追従作業がいずれ必要になる。
-- 修正コストは型宣言 1 行 + `static_assert` 追加程度。
+現状の対応プラットフォームは全て 64bit の LP64 / LLP64 なので実害はない。ただし `Mp4FileMuxerOptions.reserved_moov_box_size` の `u64` → `u32` 変更のような C API 側の型変更に追従漏れが起きる潜在リスクがあり、型の一致を明示的に担保する必要がある。
 
 ## 現状
 
@@ -37,7 +29,7 @@ result.data_offset_ = raw_sample.data_offset;
 result.data_size_ = raw_sample.data_size;  // uintptr_t → uint64_t の暗黙変換
 ```
 
-64bit プラットフォームでは `sizeof(uintptr_t) == sizeof(uint64_t) == 8` なので問題は表面化しない。32bit プラットフォームに移植した場合 (`sizeof(uintptr_t) == 4`) は uint64_t への拡張なので破損しないが、逆方向 (Muxer 側で size_t を uint32_t にキャストする箇所) は既に別 issue (`issues/0002-bug-integer-truncation-in-mux-demux-boundaries.md`) で扱っている。
+64bit プラットフォームでは `sizeof(uintptr_t) == sizeof(uint64_t) == 8` なので問題は表面化しない。32bit プラットフォームに移植した場合 (`sizeof(uintptr_t) == 4`) は uint64_t への拡張なので破損しないが、逆方向 (Muxer 側で size_t を uint32_t にキャストする箇所) は既に `issues/closed/0002-bug-integer-truncation-in-mux-demux-boundaries.md` で扱っている。
 
 ## 設計方針
 

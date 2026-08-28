@@ -1,23 +1,14 @@
 # pytest の addopts (strict-markers / strict-config) が未設定
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/test-add-pytest-strict-config
 - Polished: 2026-08-15
 - Milestone: 2026.2.0
 
 ## 目的
 
-`pyproject.toml` の pytest 設定に `addopts` がなく、未登録マーカーの使用 (マーカー名の typo による適用漏れ) や設定ファイルの typo を検出できない状態を解消する。
-
-## 優先度根拠
-
-Low。
-
-- 現状のテストに未登録マーカーは存在せず、挙動を変えない予防的設定 (将来のマーカー typo を CI で検出できるようにする)
-- 修正コストは小 (pyproject.toml への addopts 追加のみ)
+`pyproject.toml` の pytest 設定に `addopts` がなく、未登録マーカーの使用 (マーカー名の typo による適用漏れ) や設定ファイルの typo を検出できない状態を解消する。挙動を変えない予防的設定であり、将来のマーカー typo を CI で検出できるようにする。
 
 ## 現状
 
@@ -25,9 +16,14 @@ Low。
 
 ```toml
 [tool.pytest.ini_options]
+# Property-Based Testing (PBT) は prop_ prefix を使用する
 python_files = ["test_*.py", "prop_*.py"]
 python_functions = ["test_*", "prop_*"]
 testpaths = ["tests"]
+# テストがハングした場合のセーフティネット
+# コマンドラインの --timeout / PYTEST_TIMEOUT 環境変数が ini の値より優先される
+# (CI は --timeout=30 を明示しているため 30 秒のまま)
+timeout = 10
 ```
 
 `addopts` が未設定。時雨堂の Python 参考設定では `addopts = ["-ra", "--strict-markers", "--strict-config"]` を指定しており、以下が有効になる:
@@ -38,7 +34,7 @@ testpaths = ["tests"]
 
 現状のテストのマーカー使用は `tests/test_free_threading.py` の `pytestmark = pytest.mark.skipif(...)` (pytest 組み込み) のみで、未登録マーカーは存在しない。なお `@pytest.mark.timeout` は pytest-timeout プラグインが自動登録するため、strict 化後も使用可能 (未登録マーカーにはならない)。
 
-pytest タイムアウトの `timeout` 設定は別 issue (issues/0016-test-add-pytest-timeout-config.md) で対応予定のため、本 issue では扱わない。0016 と同一セクションを編集するため、両方ともセクション末尾 (または先頭) に追記するとマージ時にコンフリクトし得る。追加位置をずらして実装する (例: addopts をセクション先頭、timeout をセクション末尾) ことで、マージ順に関わらずコンフリクトを回避できる。
+pytest タイムアウトの `timeout` 設定は既に `[tool.pytest.ini_options]` へ追加済み (`timeout = 10`) であり、本 issue が `addopts` を同じセクションに追加するだけで済む。
 
 ## 設計方針
 

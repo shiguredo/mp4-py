@@ -1,22 +1,13 @@
 # wheel.yml の Windows runner を windows-2025-vs2026 に変更する
 
-- Priority: Low
 - Created: 2026-08-15
 - Completed: {YYYY-MM-DD}
-- Model: Opus 4.7
 - Branch: feature/update-windows-runner
 - Polished: 2026-08-15
 
 ## 目的
 
-`.github/workflows/wheel.yml` の Windows runner が `windows-2025` を使用しており、`shiguredo-github-actions` スキルの「`windows-2025` の代わりに `windows-2025-vs2026` を使うこと」という規約に違反している状態を解消する。
-
-## 優先度根拠
-
-Low。
-
-- `windows-2025` は現時点で deprecated ではなく緊急性はないが、スキル規約違反の是正
-- 修正コストは小 (2 ジョブの runs-on 変更のみ)
+`.github/workflows/wheel.yml` の Windows runner が `windows-2025` を使用しており、`shiguredo-github-actions` スキルの「`windows-2025` の代わりに `windows-2025-vs2026` を使うこと」という規約に違反している状態を解消する。`windows-2025` 自体は deprecated ではないため緊急性はないが、規約違反の是正として行う。
 
 ## 現状
 

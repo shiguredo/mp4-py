@@ -1,6 +1,5 @@
 # cargo fmt --check が develop で通らない (finalized チェックのフォーマット違反)
 
-- Priority: Low
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-cargo-fmt-finalized-check

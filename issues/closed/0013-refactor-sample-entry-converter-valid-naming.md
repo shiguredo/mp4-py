@@ -1,23 +1,13 @@
 # SampleEntryConverter::valid の名称が実態と乖離しており「命名詐欺」になっている
 
-- Priority: Low
 - Created: 2026-07-22
 - Completed: 2026-07-22
-- Model: Opus 4.7
 - Branch: feature/refactor-sample-entry-converter-valid-naming
 - Polished: {YYYY-MM-DD}
 
 ## 目的
 
-`SampleEntryConverter::valid` フィールドの名称は「変換結果が妥当か」に読めるが、実態は「入力が None ではないか」の記録に過ぎない。エラー時 (`Unsupported sample entry type` の throw) には `valid = true` のまま。呼び出し側 (`src/mp4_ext.cpp:1478`) は `converter.valid ? &converter.raw_entry : nullptr` として「NULL 渡しは前サンプルと同じ」というセマンティクスの実現に使っている。命名と意味を一致させる。
-
-## 優先度根拠
-
-Low。
-
-- 機能上のバグではないが、コードを読む際に強い誤解を招く。
-- 修正コストは小さい (フィールド名の変更 + 数箇所の参照書き換え)。
-- `issues/0012-refactor-split-mp4-ext-and-sample-entry-scaffolding.md` の対応時にまとめて実施してもよい。
+`SampleEntryConverter::valid` フィールドの名称は「変換結果が妥当か」に読めるが、実態は「入力が None ではないか」の記録に過ぎない。エラー時 (`Unsupported sample entry type` の throw) には `valid = true` のまま。呼び出し側 (`src/mp4_ext.cpp:1478`) は `converter.valid ? &converter.raw_entry : nullptr` として「NULL 渡しは前サンプルと同じ」というセマンティクスの実現に使っている。機能上のバグはないがコードを読む際に強い誤解を招くため、命名と意味を一致させる。
 
 ## 現状
 

@@ -1,6 +1,5 @@
 # 破損データ由来エラーが Mp4Exception と RuntimeError の 2 型で届く
 
-- Priority: Medium
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/refactor-unify-corrupted-data-errors
