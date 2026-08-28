@@ -1422,14 +1422,20 @@ impl Mp4SampleEntryTx3g {
         default_style: Option<(u16, u16, u16, u8, u8, Vec<u8>)>,
         font_table: Option<Vec<(u16, Vec<u8>)>>,
     ) -> PyResult<Self> {
-        // 4 バイト固定フィールドは長さを検証する
-        let background_color_rgba = background_color_rgba.unwrap_or_default();
+        // 4 バイト検証は background_color_rgba と default_style のテキスト色に対して行う。
+        // unwrap_or_default() では空 Vec になって 4 バイト検証を通過できないため、
+        // unwrap_or で透明背景 (RGBA 全ゼロ) を既定値として明示する
+        let background_color_rgba = background_color_rgba.unwrap_or(vec![0, 0, 0, 0]);
         if background_color_rgba.len() != 4 {
             return Err(PyValueError::new_err(
                 "background_color_rgba must be exactly 4 bytes",
             ));
         }
-        // 既定のスタイル (3GPP TS 26.245 の StyleRecord) の 6 番目はテキスト色 RGBA 4 バイト
+        // 既定のスタイルは 3GPP TS 26.245 §5.15 (Rel-19 基準。節番号は改訂で変わり得る) の
+        // StyleRecord で、6 番目はテキスト色 RGBA 4 バイト。
+        // コアの StyleRecord::default() と揃う全ゼロを既定とする。§5.6 では透明 (alpha 0) の
+        // サポート自体は端末側で任意だが、背景色とテキスト色が同一のときは文字が見えなくなるため、
+        // 既定値のまま実コンテンツを投入するのは安全ではない
         let default_style = default_style.unwrap_or((0, 0, 0, 0, 0, vec![0, 0, 0, 0]));
         if default_style.5.len() != 4 {
             return Err(PyValueError::new_err(
