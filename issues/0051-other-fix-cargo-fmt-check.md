@@ -1,7 +1,7 @@
 # cargo fmt --check が develop で通らない (finalized チェックのフォーマット違反)
 
 - Created: 2026-08-16
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-28
 - Branch: feature/fix-cargo-fmt-finalized-check
 - Polished: {YYYY-MM-DD}
 
@@ -43,6 +43,8 @@ if state.finalized {
 
 ## 解決方法
 
-1. `cargo fmt --all` を実行する
-2. `cargo fmt --all -- --check` で成功を確認する
-3. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
+`cargo fmt --all` を実行してフォーマットを修正した。commit `89f8d02` (src/lib.rs に cargo fmt を適用する) で develop に入り、以後 `cargo fmt --all -- --check` は成功する。
+
+1. `Mp4FileMuxer::append_sample` 冒頭の finalized チェックを rustfmt 出力どおりの 1 行記述に直した (書式以外の変更はない)
+2. 2026-08-28 に `cargo fmt --all -- --check` の成功を再確認した
+3. 2026-08-28 に `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で 124 passed / 7 skipped を確認した
