@@ -1614,6 +1614,108 @@ def test_subtitle_sample_entry_tx3g():
     assert demux_sample.data == sample_data
 
 
+def test_subtitle_sample_entry_tx3g_default_arguments():
+    """TX3G サンプルエントリーをデフォルト引数だけで構築できる
+
+    目的: background_color_rgba は 4 バイト検証があるため、省略時 (None 相当) の
+          既定値が空 Vec だと構築は必ず ValueError で失敗していた。
+          既定値が透明背景 (RGBA 全ゼロ) として成立することを固定する
+    検証: 引数なし構築で 7 フィールドが透明 / ゼロ / 空の既定値になること。
+          background_color_rgba の明示的な None も同じ既定値になること
+    """
+    sample_entry = Mp4SampleEntryTx3g()
+
+    # display_flags と horizontal / vertical justification は引数既定値として決める 0 である
+    assert sample_entry.display_flags == 0
+    assert sample_entry.horizontal_justification == 0
+    assert sample_entry.vertical_justification == 0
+    assert sample_entry.background_color_rgba == b"\x00\x00\x00\x00"
+    # default_text_box と default_style のテキスト色は、コアが derive(Default) で持つ全ゼロと揃う
+    assert sample_entry.default_text_box == (0, 0, 0, 0)
+    assert sample_entry.default_style == (0, 0, 0, 0, 0, b"\x00\x00\x00\x00")
+    assert sample_entry.font_table == []
+
+    # 明示的な None は PyO3 の signature 上も省略と同じ経路であり、同じ既定値になる
+    none_entry = Mp4SampleEntryTx3g(background_color_rgba=None)
+    assert none_entry.background_color_rgba == b"\x00\x00\x00\x00"
+
+
+def test_subtitle_sample_entry_tx3g_default_roundtrip():
+    """デフォルト引数で構築した TX3G サンプルエントリーを mux / demux できる
+
+    目的: 既定値のままでは構築自体が失敗していたため、mux → demux の
+          ラウンドトリップが成立したことを固定する
+    検証: トラックが 1 本の字幕トラックとして復元され、構築時の既定値が保たれること。
+          font_table が空でも ftab ボックスが 1 個書き出されること
+          (ftab の検証は sample entry が 1 個のケースのみを見る)
+    """
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+
+    sample_data = create_dummy_sample(0, size=256)
+    sample_entry = Mp4SampleEntryTx3g()
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="subtitle",
+            sample_entry=sample_entry,
+            keyframe=True,
+            timescale=1000,
+            duration=100,
+            data=sample_data,
+        )
+    )
+    muxer.finalize()
+
+    # font_table が空でも entry_count=0 の ftab ボックスが 1 個書き出される。
+    # ftab は tx3g の必須子ボックスで、2 個目は demux 側で unknown box に吸収されエラーにならないため、
+    # バイト列でしか検出できない。stsd 以降の先頭 tx3g ボックスに範囲を絞り、
+    # hdlr 名やサンプルデータの偶然一致でアンカーを盗まれないようにする
+    muxed = output_buffer.getvalue()
+    tx3g_start = muxed.index(b"tx3g", muxed.index(b"stsd")) - 4
+    tx3g_size = int.from_bytes(muxed[tx3g_start : tx3g_start + 4], "big")
+    ftab_box = struct.pack(">I4sH", 10, b"ftab", 0)
+    assert muxed[tx3g_start : tx3g_start + tx3g_size].count(ftab_box) == 1
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+
+    tracks = demuxer.tracks
+    assert len(tracks) == 1
+    assert tracks[0].kind == "subtitle"
+
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryTx3g)
+    assert demux_sample.sample_entry.display_flags == sample_entry.display_flags
+    assert (
+        demux_sample.sample_entry.horizontal_justification == sample_entry.horizontal_justification
+    )
+    assert demux_sample.sample_entry.vertical_justification == sample_entry.vertical_justification
+    assert demux_sample.sample_entry.background_color_rgba == sample_entry.background_color_rgba
+    assert demux_sample.sample_entry.default_text_box == sample_entry.default_text_box
+    assert demux_sample.sample_entry.default_style == sample_entry.default_style
+    assert demux_sample.sample_entry.font_table == sample_entry.font_table
+    assert demux_sample.data == sample_data
+
+
+def test_subtitle_sample_entry_tx3g_rejects_invalid_rgba_length():
+    """TX3G サンプルエントリーは 4 バイト以外の RGBA を ValueError で拒否する
+
+    目的: 既定値を 4 バイトに変更した後も長さ検証は維持されることを確認する
+    検証: background_color_rgba と default_style のテキスト色で 4 バイト以外を拒否すること
+    """
+    with pytest.raises(ValueError, match="background_color_rgba must be exactly 4 bytes"):
+        Mp4SampleEntryTx3g(background_color_rgba=b"\x00\x00\x00")
+    with pytest.raises(ValueError, match="background_color_rgba must be exactly 4 bytes"):
+        Mp4SampleEntryTx3g(background_color_rgba=b"")
+    # default_style 側の検証だけを切り分けるため、background_color_rgba は既定値に頼らず
+    # 4 バイトの有効値を明示する
+    with pytest.raises(ValueError, match="default_style text_color_rgba must be exactly 4 bytes"):
+        Mp4SampleEntryTx3g(
+            background_color_rgba=b"\x00\x00\x00\x00",
+            default_style=(0, 0, 0, 0, 0, b"\x00\x00\x00\x00\x00"),
+        )
+
+
 def test_track_metadata():
     """トラックメタデータ (言語・名前) のテスト"""
     options = Mp4FileMuxerOptions(

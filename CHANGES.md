@@ -73,6 +73,9 @@
 - [FIX] Demux のパースエラーを Python 側に報告する
   - 破損データのパースエラーが StopIteration / 空リストに隠蔽されず RuntimeError として届くようにする
   - @voluntas
+- [FIX] Mp4SampleEntryTx3g をデフォルト引数で構築できるようにする
+  - 省略した background_color_rgba が 4 バイト検証を通過せず ValueError になっていたため、透明背景 (RGBA 全ゼロ) を既定値にする
+  - @voluntas
 
 ### misc
 

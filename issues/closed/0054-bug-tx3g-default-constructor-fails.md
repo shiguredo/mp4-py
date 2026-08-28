@@ -1,7 +1,7 @@
 # Mp4SampleEntryTx3g がデフォルト引数でコンストラクタ失敗する
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-29
 - Branch: feature/fix-tx3g-default-constructor
 - Polished: 2026-08-20
 - Milestone: 2026.2.0
@@ -37,3 +37,17 @@ entry = Mp4SampleEntryTx3g()  # ValueError が発生する
 - `Mp4SampleEntryTx3g()` がエラーなく構築できる
 - 既定値で構築したエントリで mux → demux が成功する
 - `tests/test_mp4.py` に Tx3g のデフォルト引数経路を検証するテストが追加されている
+
+## 解決方法
+
+`src/lib.rs` の `Mp4SampleEntryTx3g::new` で `background_color_rgba` の既定値を `unwrap_or_default()`（空 `Vec`）から `unwrap_or(vec![0, 0, 0, 0])`（透明背景の RGBA 全ゼロ）に変更した。PyO3 の signature 上の既定値は `None` のままなので、引数省略時も明示的な `None` も同じ 4 バイト既定値に解決される。4 バイト長さ検証自体は維持しており、3 バイト・空バイト列・5 バイトの入力は従来どおり `ValueError` を返す。
+
+`tests/test_mp4.py` に 3 本の単体テストを追加した。
+
+- `test_subtitle_sample_entry_tx3g_default_arguments`: 引数なし構築で 7 フィールドが既定値になることと、明示的な `None` も同じ既定値になることを検証する
+- `test_subtitle_sample_entry_tx3g_default_roundtrip`: 既定値で構築したエントリが mux → demux を通り、字幕トラック 1 本として復元されることを検証する。空 `font_table` でも `entry_count=0` の `ftab` ボックスが 1 個書き出される点をバイト列で検証する
+- `test_subtitle_sample_entry_tx3g_rejects_invalid_rgba_length`: 4 バイト以外の RGBA が `ValueError` で拒否され続けることを検証する
+
+テキスト色の既定も全ゼロになるため、3GPP TS 26.245 §5.6 では背景色とテキスト色が同一のとき文字が見えなくなる旨を `src/lib.rs` のコメントに明記した。既定値のままの実コンテンツ投入は安全ではない。
+
+`CHANGES.md` の `## develop` に `[FIX]` を追加した。
