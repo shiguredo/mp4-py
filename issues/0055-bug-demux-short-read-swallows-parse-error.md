@@ -1,7 +1,7 @@
 # Demuxer のショートリードでコアのパースエラーが握りつぶされ破損 MP4 が無エラーで通る
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-29
 - Branch: feature/fix-demux-short-read-error-swallowing
 - Polished: 2026-08-20
 - Milestone: 2026.2.0
@@ -53,3 +53,16 @@ tracks = demuxer.tracks  # []
 - README の記述が実装と一致する
 - 上記 2 経路 (moov 途中切れのエラー化・32 バイト未満の正常終了) を固定する回帰テストが追加されている
 - 既存テストが全通過する
+
+## 解決方法
+
+`src/lib.rs` の `Mp4FileDemuxer::feed_required_input` で、ショートリード判定を `position` で分岐させた。`position == 0` (ftyp パース完了前) のショートリードは従来どおり `Ok(true)` (真の EOF) を返し、空ファイル・ftyp ヘッダ要求 32 バイトに満たないデータ・ftyp 本体が途中で切れたデータは「トラック 0 本の正常終了」で通る。`position > 0` (ftyp パース成功後の moov 探索・読み込み) のショートリードは新メソッド `short_read_error` に渡し、EOF として握りつぶさずエラー化した。
+
+`short_read_error` はコアの `tracks()` を再呼び出しして、`handle_input` が保存した `DemuxError` を取り出し、新ヘルパー `map_mp4_exception_err` (`map_err` と同じ `mp4 error: ...` 形式、マッピング先が `Mp4Exception`) で `Mp4Exception` に変換する。shiguredo_mp4 2026.5.0 ではこの経路で `tracks()` が `Ok` を返すことはソースコード上到達しないが、外部クレート依存のため将来の仕様変更でも握りつぶさないよう `Ok` 腕にフォールバックメッセージを残した。破損サブタイプ全体の例外型統一 (通常パースエラーは依然 `RuntimeError`) は 0053 のスコープのため本 issue ではショートリード経路のみ `Mp4Exception` 化している。
+
+`tests/test_mp4.py` に 2 本の単体テストを追加した。
+
+- `test_demuxer_short_read_after_ftyp_raises_mp4_exception`: moov 途中切れの 32 バイトデータで tracks アクセスと反復の両方が `Mp4Exception` になり、エラー後の tracks が空リスト・以後の反復が `StopIteration` になることを検証する。あわせて完全な 32 バイト ftyp の直後で EOF に達するファイル (moov 無し) も `Mp4Exception` になる 32 バイト境界を固定する
+- `test_demuxer_short_read_before_ftyp_completes`: 空ファイル・8 バイト・完全な 24 バイト ftyp・size 宣言超過で切れる 24 / 32 バイトデータの各 position 0 ショートリードがエラーなくトラック 0 本で通ることを検証する
+
+README の破損データ挙動の記述を実装と一致するよう 2 項目に分けて更新し、`CHANGES.md` の `## develop` に `[FIX]` を追加した。
