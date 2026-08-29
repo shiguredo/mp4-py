@@ -80,6 +80,9 @@
   - ftyp パース成功後に moov を読み切れず EOF に達する破損 MP4 が「トラック 0 本の正常終了」として無エラーで通る経路を解消する
   - ftyp パース完了前のショートリード (空ファイルや ftyp が読みきれない部分データ) は従来どおり正常終了のまま
   - @voluntas
+- [FIX] examples/remux.py が composition_time_offset を失わずに remux できるようにする
+  - demux したサンプルの composition_time_offset を Mp4MuxSample へ引き継ぎ、ctts を持つコンテンツでも remux 後に PTS が DTS に縮退しないようにする
+  - @voluntas
 
 ### misc
 
@@ -108,6 +111,10 @@
 - [UPDATE] `build-system.requires` の maturin バージョン下限を `1.14` に引き上げる
   - @voluntas
 - [UPDATE] tombi を 1.4.0 に上げる
+  - @voluntas
+- [UPDATE] remux サンプルの変換ループを remux 関数に抽出する
+  - main とテストが同じ関数を呼ぶ構成にして、テストから remux 経路を検証できるようにする
+  - pytest の pythonpath と ty の extra-paths に examples を追加する
   - @voluntas
 - [FIX] Cargo.toml の pyo3 依存を TOML 1.0 準拠の 1 行 inline table に修正する
   - @voluntas

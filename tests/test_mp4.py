@@ -29,6 +29,7 @@ from mp4 import (
     Mp4TrackMetadata,
     estimate_maximum_moov_box_size,
 )
+from remux import remux
 
 # テスト用定数
 NUM_VIDEO_SAMPLES = 5
@@ -1149,6 +1150,69 @@ def test_mux_demux_roundtrip_with_composition_time_offset():
     actual_offsets = [sample.composition_time_offset for sample in demuxer]
 
     assert actual_offsets == expected_offsets
+
+
+def test_remux_preserves_composition_time_offset():
+    """remux 経路 (mux → demux → mux → demux) でも composition_time_offset が保持される
+
+    目的: examples/remux.py の remux 関数が demux したサンプルの
+          composition_time_offset を mux 側へ引き継ぐことを確認する
+    検証: 正値・負値・0 (負値は ctts version 1) を含むオフセット列が
+          remux 後も一致すること。keyframe とサンプルデータの劣化がないことも確認する
+    """
+    # 1 回目の mux: 正値と負値のオフセットを持つ映像サンプルを書き出す
+    # 負値は ctts version 1 で書き出されるため、version 1 の復元経路も同時に固定する
+    first_buffer = io.BytesIO()
+    first_muxer = Mp4FileMuxer(first_buffer)
+    expected_offsets = [1000, -500, 0, -2000]
+    for i, offset in enumerate(expected_offsets):
+        mux_sample = Mp4MuxSample(
+            track_kind="video",
+            sample_entry=Mp4SampleEntryAvc1(
+                width=VIDEO_WIDTH,
+                height=VIDEO_HEIGHT,
+                avc_profile_indication=0x42,
+                avc_level_indication=0x29,
+                profile_compatibility=0xC0,
+                sps_data=[bytes([0x67, 0x42, 0x00, 0x1E])],
+                pps_data=[bytes([0x68, 0xCE, 0x38, 0x80])],
+            ),
+            keyframe=(i == 0),
+            timescale=TIMESCALE,
+            duration=SAMPLE_DURATION,
+            data=create_dummy_sample(i),
+            composition_time_offset=offset,
+        )
+        first_muxer.append_sample(mux_sample)
+    first_muxer.finalize()
+
+    # 2 回目の mux: demux したサンプルを remux 関数で別の muxer へ変換する
+    # (examples/remux.py の main と同じ経路を通る)
+    first_buffer.seek(0)
+    first_demuxer = Mp4FileDemuxer(first_buffer)
+    second_buffer = io.BytesIO()
+    second_muxer = Mp4FileMuxer(second_buffer)
+    sample_count = remux(first_demuxer, second_muxer)
+    second_muxer.finalize()
+
+    # すべてのサンプルが変換されていること
+    assert sample_count == len(expected_offsets)
+
+    # remux 後のファイルからサンプルを読み戻す
+    second_buffer.seek(0)
+    second_demuxer = Mp4FileDemuxer(second_buffer)
+    samples = list(second_demuxer)
+
+    # composition_time_offset が正値・負値・0 のいずれも劣化せず保持されていること
+    assert [sample.composition_time_offset for sample in samples] == expected_offsets
+
+    # keyframe フラグが引き継がれていること (欠落すると stss が黙って消える)
+    assert [sample.keyframe for sample in samples] == [i == 0 for i in range(len(expected_offsets))]
+
+    # サンプルデータが劣化していないこと
+    assert [sample.data for sample in samples] == [
+        create_dummy_sample(i) for i in range(len(expected_offsets))
+    ]
 
 
 def test_options_default_values():

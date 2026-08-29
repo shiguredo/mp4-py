@@ -15,7 +15,34 @@ import sys
 from mp4 import Mp4FileDemuxer, Mp4FileMuxer, Mp4MuxSample
 
 
-def main():
+def remux(demuxer: Mp4FileDemuxer, muxer: Mp4FileMuxer) -> int:
+    """デマルチプレクサーからマルチプレクサーへすべてのサンプルを変換する
+
+    demuxer から取得したサンプルを Mp4MuxSample へ詰め替えて
+    muxer に逐次追加する (メモリに蓄積しない)。
+    composition_time_offset も引き継ぐため、B フレーム入り H.264 等
+    ctts を持つコンテンツでも PTS = DTS + composition_time_offset で
+    導出される A/V 同期が崩れない。
+
+    戻り値は処理したサンプル数である
+    """
+    sample_count = 0
+    for sample in demuxer:
+        mux_sample = Mp4MuxSample(
+            track_kind=sample.track.kind,
+            sample_entry=sample.sample_entry,
+            keyframe=sample.keyframe,
+            timescale=sample.track.timescale,
+            duration=sample.duration,
+            data=sample.data,
+            composition_time_offset=sample.composition_time_offset,
+        )
+        muxer.append_sample(mux_sample)
+        sample_count += 1
+    return sample_count
+
+
+def main() -> None:
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} <input_mp4> <output_mp4>", file=sys.stderr)
         sys.exit(1)
@@ -33,30 +60,7 @@ def main():
             print(f"Found {len(tracks)} track(s)\n")
 
             with Mp4FileMuxer(output_filepath) as muxer:
-                sample_count = 0
-
-                # demuxer からサンプルを取得しながら、
-                # 逐次 muxer に追加する（メモリに蓄積しない）
-                for sample in demuxer:
-                    # サンプルデータを取得
-                    sample_data = sample.data
-
-                    # マルチプレックスサンプルを構築
-                    mux_sample = Mp4MuxSample(
-                        track_kind=sample.track.kind,
-                        sample_entry=sample.sample_entry,
-                        keyframe=sample.keyframe,
-                        timescale=sample.track.timescale,
-                        duration=sample.duration,
-                        data=sample_data,
-                    )
-
-                    # マルチプレックサーにサンプルを追加
-                    muxer.append_sample(mux_sample)
-
-                    sample_count += 1
-                    if sample_count % 100 == 0:
-                        print(f"  Processed {sample_count} samples")
+                sample_count = remux(demuxer, muxer)
 
                 print(f"Total samples processed: {sample_count}\n")
 
