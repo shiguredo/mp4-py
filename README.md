@@ -50,7 +50,8 @@ uv add mp4-py
 - VP8 / VP9 / AV1 / H.264 / H.265 映像コーデック対応
 - STPP (XML 字幕) / WVTT (WebVTT 字幕) / TX3G (3GPP タイムドテキスト) 対応
 - Python [Free Threading](https://docs.python.org/3/howto/free-threading-python.html) 対応
-- 破損 MP4 データはパースエラーを `RuntimeError` として報告する (moov 発見前に EOF に達するファイルはエラーにならず「トラック 0 本の正常終了」になる。エラー後の `tracks` は空リスト、以後の反復は `StopIteration` で終わる)
+- 破損 MP4 データはパースエラーを `RuntimeError` として報告する。ftyp パース成功後のショートリードは `Mp4Exception` (= `RuntimeError` のサブクラス) として報告し、ftyp が読みきれない場合のショートリードはエラーなく「トラック 0 本の正常終了」になる
+- エラー発生後のデマクサーは `tracks` が空リスト、以後の反復は `StopIteration` で終わる
 - 非対応: fragmented MP4 (fMP4)。`Mp4FileDemuxer` は fMP4 を読み取れず、stbl が空の典型的な init segment ではエラーなく「サンプル 0 個の正常終了」になる
 
 ### MP4 ファイルの読み込み

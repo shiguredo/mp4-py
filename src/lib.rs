@@ -56,6 +56,13 @@ fn map_err<E: std::fmt::Display>(e: E) -> PyErr {
     PyRuntimeError::new_err(format!("mp4 error: {e}"))
 }
 
+// ショートリード由来のエラーを Mp4Exception として報告する変換。
+// マッピング先が Mp4Exception であることを除き map_err と同じメッセージ形式にする
+// (Mp4Exception は RuntimeError 派生なので except RuntimeError は従来どおり機能する)。
+fn map_mp4_exception_err<E: std::fmt::Display>(e: E) -> PyErr {
+    Mp4Exception::new_err(format!("mp4 error: {e}"))
+}
+
 // Mutex が Poisoned のとき、以前の Rust パニックで壊れた状態を Python 側にわかる
 // 形で伝える。以前は `.unwrap()` で Rust パニックさせていたが、これは PyO3 の
 // trampoline で SystemError に変換され原因が分かりにくかった。
@@ -2348,15 +2355,17 @@ struct Mp4FileDemuxer {
 }
 
 impl Mp4FileDemuxer {
-    // 回復不能なエラー後の状態を統一する。tracks_cache を空にすることで、
-    // エラー後に tracks がエラー前のトラック情報を返さないようにし、
-    // 以後の反復を StopIteration で終了させる。
+    // 回復不能なエラーまたは ftyp 読み取り途中の EOF (正常終了) 後の状態を統一する。
+    // tracks_cache を空にすることで、エラー後に tracks がエラー前のトラック情報を
+    // 返さないようにし、以後の反復を StopIteration で終了させる。
     fn set_fatal(state: &mut DemuxerState) {
         state.tracks_cache = Some(Vec::new());
         state.ended = true;
     }
 
-    // 必要なデータをストリームから供給する。真の EOF に達したら true を返す。
+    // 必要なデータをストリームから供給する。ftyp パース完了前 (position 0) の
+    // ショートリードで真の EOF に達したら true を返す。ftyp パース成功後の
+    // ショートリードは Mp4Exception として返す。
     // lock 済みの state を受け取る (lock 中に IO する)。
     // stream_lock は内部で個別に取得し、sample.data と直列化する。
     fn feed_required_input(&self, py: Python<'_>, state: &mut DemuxerState) -> PyResult<bool> {
@@ -2401,13 +2410,41 @@ impl Mp4FileDemuxer {
             };
             let data = read.bind(py).as_bytes();
             state.core.handle_input(DemuxInput { position, data });
-            if let Some(n) = size {
-                if data.len() < n {
+            let short_read = match size {
+                Some(n) => data.len() < n,
+                None => data.is_empty(),
+            };
+            if short_read {
+                // ftyp パース完了前 (position 0) のショートリードは従来どおり
+                // 真の EOF として正常終了扱いにする。空ファイルや ftyp が読み
+                // きれないデータ (ftyp が完全でも初回ヘッダ要求の 32 バイトに
+                // 満たない場合を含む) がここに入る
+                if position == 0 {
                     return Ok(true);
                 }
-            } else if data.is_empty() {
-                return Ok(true);
+                // ftyp パース成功後 (moov の探索・読み込み段階の読み込み要求) の
+                // ショートリードは、コアの handle_input が回復不能なエラー状態
+                // (handle_input_error) に遷移しているため、EOF として握りつぶさず
+                // エラー化する
+                return Err(Self::short_read_error(state));
             }
+        }
+    }
+
+    // ショートリード後のコアのエラーを Mp4Exception として取り出す。
+    // ショートリード後は tracks() / next_sample() が必ず DemuxError を返すため、
+    // tracks() を再呼び出ししてコアが保持するエラーメッセージをそのまま利用する。
+    // Err にならないうえにショートリードするケースは shiguredo_mp4 2026.5.0 では
+    // 到達しない: Some(n) 要求は n 未満の入力で is_satisfied_by が false を返して
+    // handle_input がエラーを保存し、None 要求の空読みは position > 0 (moov が
+    // 宣言サイズ 0 で EOF 延伸) のときだけだが、その位置には moov ヘッダ分の
+    // データが実在するため seekable ストリームでは空読みにならない。ただしコアは
+    // crates.io 版の外部依存であり、将来の仕様変更で Ok が返っても握りつぶさない
+    // よう、フォールバックでエラーを返す防御を残す
+    fn short_read_error(state: &mut DemuxerState) -> PyErr {
+        match state.core.tracks() {
+            Err(err) => map_mp4_exception_err(err),
+            Ok(_) => map_mp4_exception_err("short read while loading moov (corrupted data?)"),
         }
     }
 
