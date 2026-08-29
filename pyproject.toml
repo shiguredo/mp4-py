@@ -45,6 +45,9 @@ python-source = "python"
 # Property-Based Testing (PBT) は prop_ prefix を使用する
 python_files = ["test_*.py", "prop_*.py"]
 python_functions = ["test_*", "prop_*"]
+# examples/ はパッケージではないため、pythonpath に追加して
+# サンプルプログラムの関数 (remux 等) をテストから import できるようにする
+pythonpath = ["examples"]
 testpaths = ["tests"]
 # テストがハングした場合のセーフティネット
 # コマンドラインの --timeout / PYTEST_TIMEOUT 環境変数が ini の値より優先される
@@ -56,10 +59,15 @@ target-version = "py312"
 line-length = 100
 
 [tool.ty]
+
 # 拡張モジュール (mp4_ext.abi3.so) は型スタブを持たないため、import 解決を
 # 許可する。型スタブの同梱は別途検討する (型スタブに関する issue を参照)。
 [tool.ty.analysis]
 allowed-unresolved-imports = ["mp4.mp4_ext"]
+
+# pytest の pythonpath (examples) に対応する ty 側のモジュール解決パス
+[tool.ty.environment]
+extra-paths = ["examples"]
 
 [tool.uv]
 package = false
