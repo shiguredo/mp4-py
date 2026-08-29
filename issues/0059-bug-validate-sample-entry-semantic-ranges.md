@@ -1,7 +1,7 @@
 # SampleEntry の意味論的値域検証の不足 (Wvtt config / Tx3g justification / font_name 遅延エラー)
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-29
 - Branch: feature/fix-validate-sample-entry-semantic-ranges
 - Polished: 2026-08-20
 - Milestone: 2026.2.0
@@ -36,3 +36,21 @@
 - 不正な config ("WEBVTT" 始まりでない) / justification (-1・0・1 以外) / font_name (256 バイト以上) がコンストラクタで `ValueError` になる
 - 合法な値 (config が "WEBVTT" 始まり / justification が -1・0・1 / font_name が 255 バイト以下) は従来どおり動作する
 - 既存テストが全通過する
+
+## 解決方法
+
+`src/lib.rs` に Tx3g の水平 / 垂直ジャスティフィケーションの値域 (-1 / 0 / 1) を検証する `validate_justification` ヘルパーを追加した (既存の `validate_range` / `validate_vpcc_fields` と同じ `//` コメントスタイルで、根拠はコアの `Tx3gBox` の doc コメント参照として記載)。意味論的な列挙値なのでエラーメッセージは 10 進表記 (`must be -1, 0 or 1, got {value}`) とし、0030 の「ビット幅は 16 進、意味論的列挙は 10 進」の使い分けに揃えた。
+
+`Mp4SampleEntryWvtt::new` は `config` が `"WEBVTT"` 始まりであることを検証し、`Self` を返していたシグネチャを `PyResult<Self>` に変更した。判定はコアの doc に合わせた prefix 一致とし、行構造までは検証しない方針をコメントに明記した。エラーメッセージは Debug 表記 (`got {config:?}`) で空文字列が分かりやすく出るようにした。
+
+`Mp4SampleEntryTx3g::new` に 2 つの検証を追加した。ジャスティフィケーションは `validate_justification` を引数順に呼ぶ。フォント名は `font_table.unwrap_or_default()` を検証前に移動した上で各エントリーのバイト長を検証し、255 バイト超は `font_table[{index}] font_name must be 255 bytes or less, got {len} bytes` を返す。index を含めることで複数エントリー中のどれが違反かを特定できるようにした。`from_box` (demux 経路) は入力データ由来の値をそのまま保持する既存方針のため検証対象外のまま (コアの decode も値域検証をせず、破損 MP4 から demux したオブジェクトの再 mux が壊れないことを実験で確認済み)。
+
+`tests/test_mp4.py` に 3 件の単体テストを追加した。
+
+- `test_subtitle_sample_entry_wvtt_rejects_invalid_config`: 空文字列 / 小文字 / prefix 未満で `ValueError`、"WEBVTT" ちょうどは構築できる
+- `test_subtitle_sample_entry_tx3g_rejects_invalid_justification`: 両方向の境界外 (-2 / 2) で `ValueError`、境界値 (-1 / 0 / 1) は両方向とも構築できる
+- `test_subtitle_sample_entry_tx3g_font_name_length_boundary`: 256 バイト (index 0) と 300 バイト (index 1) で `ValueError`、255 バイトちょうどは構築から mux → demux まで成立する (先頭 null を含む生バイト列でも保持される)
+
+PBT (`st_wvtt_sample_entry` / `st_tx3g_sample_entry` / `prop_wvtt_fields_preserved` / `prop_tx3g_fields_preserved`) は合法値のみを生成するため変更せず、検証追加後に全通過することを確認した。free-threading ジョブ (`--noconftest`) の手順をローカルで再現し、追加テスト 3 件が Python 3.14t 環境でも通ることを確認した。
+
+`CHANGES.md` の `## develop` に `[FIX]` を追加した。
