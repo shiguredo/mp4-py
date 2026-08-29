@@ -1869,6 +1869,108 @@ def test_subtitle_sample_entry_tx3g_rejects_invalid_rgba_length():
         )
 
 
+def test_subtitle_sample_entry_wvtt_rejects_invalid_config():
+    """WVTT サンプルエントリーは "WEBVTT" 始まりでない config を ValueError で拒否する
+
+    目的: vttC の config は "WEBVTT" 行で始まる UTF-8 文字列という制約 (コアの
+          VttCBox::config の doc) があり、制約外の文字列でも黙って受理して
+          不正な vttC を生成する状態を解消する
+    検証: 空文字列・小文字・prefix 未満の文字列で ValueError が発火すること。
+          prefix 一致 ("WEBVTT" ちょうど) は構築できること
+    """
+    # 空文字列は prefix 一致にならない
+    with pytest.raises(ValueError, match='config must start with "WEBVTT"'):
+        Mp4SampleEntryWvtt(config="")
+    # 比較は case-sensitive で行う
+    with pytest.raises(ValueError, match='config must start with "WEBVTT"'):
+        Mp4SampleEntryWvtt(config="webvtt")
+    # prefix そのものが途切れた文字列も拒否する
+    with pytest.raises(ValueError, match='config must start with "WEBVTT"'):
+        Mp4SampleEntryWvtt(config="WEBVT")
+
+    # 境界値: "WEBVTT" ちょうど (prefix 一致) は構築できる
+    sample_entry = Mp4SampleEntryWvtt(config="WEBVTT")
+    assert sample_entry.config == "WEBVTT"
+
+
+def test_subtitle_sample_entry_tx3g_rejects_invalid_justification():
+    """TX3G サンプルエントリーは justification を -1 / 0 / 1 以外で ValueError にする
+
+    目的: 水平 / 垂直ジャスティフィケーションはコアの Tx3gBox の doc が定める
+          意味論的値域 (-1 / 0 / 1) のみが有効で、それ以外の i8 値は
+          黙って受理して不正な tx3g を生成する状態を解消する
+    検証: 境界外 (-2 / 2) で ValueError が発火すること。
+          境界値 (-1 / 0 / 1) は両方向とも構築できること
+    """
+    # 水平方向: -1 (right) / 0 (left) / 1 (centered) 以外は拒否する
+    with pytest.raises(ValueError, match="horizontal_justification must be -1, 0 or 1"):
+        Mp4SampleEntryTx3g(horizontal_justification=2)
+    with pytest.raises(ValueError, match="horizontal_justification must be -1, 0 or 1"):
+        Mp4SampleEntryTx3g(horizontal_justification=-2)
+    # 垂直方向: -1 (bottom) / 0 (top) / 1 (centered) 以外は拒否する
+    with pytest.raises(ValueError, match="vertical_justification must be -1, 0 or 1"):
+        Mp4SampleEntryTx3g(vertical_justification=2)
+    with pytest.raises(ValueError, match="vertical_justification must be -1, 0 or 1"):
+        Mp4SampleEntryTx3g(vertical_justification=-2)
+
+    # 境界値: 両方向とも -1 / 0 / 1 は構築できる
+    for value in (-1, 0, 1):
+        sample_entry = Mp4SampleEntryTx3g(
+            horizontal_justification=value,
+            vertical_justification=value,
+        )
+        assert sample_entry.horizontal_justification == value
+        assert sample_entry.vertical_justification == value
+
+
+def test_subtitle_sample_entry_tx3g_font_name_length_boundary():
+    """TX3G サンプルエントリーは font_name を 255 バイトまでしか受理しない
+
+    目的: フォント名はコアの FontRecord::encode で 1 バイト長の Pascal string として
+          書かれるため、256 バイト以上は構築時に受理されても finalize で失敗し、
+          エラー発生点が入力から離れて分かりにくい状態を解消する
+    検証: 256 バイトのフォント名で ValueError が発火すること (2 エントリー目の
+          index もメッセージに含まれること)。255 バイトちょうどは構築から
+          mux → demux まで成立すること
+    """
+    # 256 バイトは 1 バイト長 (u8) に収まらず finalize で失敗するため構築時に拒否する
+    with pytest.raises(
+        ValueError, match=r"font_table\[0\] font_name must be 255 bytes or less, got 256 bytes"
+    ):
+        Mp4SampleEntryTx3g(font_table=[(1, bytes(256))])
+
+    # 2 エントリー目の違反も index で特定できる
+    with pytest.raises(
+        ValueError, match=r"font_table\[1\] font_name must be 255 bytes or less, got 300 bytes"
+    ):
+        Mp4SampleEntryTx3g(font_table=[(1, b"Serif"), (2, bytes(300))])
+
+    # 境界値: 255 バイトちょうどは構築から mux → demux まで成立する
+    # 先頭に null を含む生バイト列でも保持される (コアは null 終端なしの
+    # Pascal string として扱い、UTF-8 検証をしない)
+    font_name_255 = bytes(range(255))
+    output_buffer = io.BytesIO()
+    muxer = Mp4FileMuxer(output_buffer)
+    sample_entry = Mp4SampleEntryTx3g(font_table=[(1, font_name_255)])
+    muxer.append_sample(
+        Mp4MuxSample(
+            track_kind="subtitle",
+            sample_entry=sample_entry,
+            keyframe=True,
+            timescale=1000,
+            duration=100,
+            data=create_dummy_sample(0, size=256),
+        )
+    )
+    muxer.finalize()
+
+    output_buffer.seek(0)
+    demuxer = Mp4FileDemuxer(output_buffer)
+    demux_sample = next(demuxer)
+    assert isinstance(demux_sample.sample_entry, Mp4SampleEntryTx3g)
+    assert demux_sample.sample_entry.font_table == [(1, font_name_255)]
+
+
 def test_track_metadata():
     """トラックメタデータ (言語・名前) のテスト"""
     options = Mp4FileMuxerOptions(

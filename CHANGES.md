@@ -64,6 +64,11 @@
   - ビット幅を超える値が黙って切り捨て・隣接ビットを汚染しないよう、各コンストラクタで ValueError を返す
   - ビット幅検証に加えて vpcC の bit_depth は意味論的値域 (8 / 10 / 12) も検証する
   - @voluntas
+- [FIX] Mp4SampleEntryWvtt と Mp4SampleEntryTx3g に意味論的値域検証を追加する
+  - Mp4SampleEntryWvtt は "WEBVTT" 始まりでない config を ValueError で拒否する
+  - Mp4SampleEntryTx3g は -1 / 0 / 1 以外の水平 / 垂直 justification を ValueError で拒否する
+  - Mp4SampleEntryTx3g は font_table のフォント名が 255 バイトを超える場合に ValueError で拒否する
+  - @voluntas
 - [FIX] Mp4SampleEntryStpp の null 文字入り入力で panic しないようにする
   - コンストラクタで null 文字を検証し、ValueError を返すようにする
   - @voluntas

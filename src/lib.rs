@@ -124,6 +124,18 @@ fn validate_vpcc_fields(bit_depth: u8, chroma_subsampling: u8) -> PyResult<()> {
     Ok(())
 }
 
+// Tx3g の水平 / 垂直ジャスティフィケーションの意味論的値域を検証するヘルパー。
+// コアの Tx3gBox の doc コメントに明記された -1 / 0 / 1 のみを許可する
+// (水平: 0 = left / 1 = centered / -1 = right、垂直: 0 = top / 1 = centered / -1 = bottom)
+fn validate_justification(value: i8, name: &str) -> PyResult<()> {
+    if !matches!(value, -1..=1) {
+        return Err(PyValueError::new_err(format!(
+            "{name} must be -1, 0 or 1, got {value}"
+        )));
+    }
+    Ok(())
+}
+
 fn default_visual(width: u16, height: u16) -> VisualSampleEntryFields {
     VisualSampleEntryFields {
         data_reference_index: VisualSampleEntryFields::DEFAULT_DATA_REFERENCE_INDEX,
@@ -1362,10 +1374,18 @@ struct Mp4SampleEntryWvtt {
 impl Mp4SampleEntryWvtt {
     #[new]
     #[pyo3(signature = (config = "WEBVTT"))]
-    fn new(config: &str) -> Self {
-        Self {
-            config: config.to_owned(),
+    fn new(config: &str) -> PyResult<Self> {
+        // vttC の config は "WEBVTT" 行で始まる UTF-8 文字列という制約が
+        // コアの VttCBox::config の doc コメントに明記されている。
+        // 行構造までは検証せず、prefix 一致で判定する
+        if !config.starts_with("WEBVTT") {
+            return Err(PyValueError::new_err(format!(
+                "config must start with \"WEBVTT\", got {config:?}"
+            )));
         }
+        Ok(Self {
+            config: config.to_owned(),
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -1429,6 +1449,8 @@ impl Mp4SampleEntryTx3g {
         default_style: Option<(u16, u16, u16, u8, u8, Vec<u8>)>,
         font_table: Option<Vec<(u16, Vec<u8>)>>,
     ) -> PyResult<Self> {
+        validate_justification(horizontal_justification, "horizontal_justification")?;
+        validate_justification(vertical_justification, "vertical_justification")?;
         // 4 バイト検証は background_color_rgba と default_style のテキスト色に対して行う。
         // unwrap_or_default() では空 Vec になって 4 バイト検証を通過できないため、
         // unwrap_or で透明背景 (RGBA 全ゼロ) を既定値として明示する
@@ -1449,6 +1471,19 @@ impl Mp4SampleEntryTx3g {
                 "default_style text_color_rgba must be exactly 4 bytes",
             ));
         }
+        let font_table = font_table.unwrap_or_default();
+        // フォント名はコアの FontRecord::encode で 1 バイト長の Pascal string
+        // (font_name_length: u8) として書かれるため 255 バイト以下という制約が
+        // コアの FontRecord の doc コメントに明記されている。
+        // 256 バイト以上は構築時に受理されても finalize で失敗するため、構築時に弾く
+        for (index, (_, font_name)) in font_table.iter().enumerate() {
+            if font_name.len() > u8::MAX as usize {
+                return Err(PyValueError::new_err(format!(
+                    "font_table[{index}] font_name must be 255 bytes or less, got {} bytes",
+                    font_name.len()
+                )));
+            }
+        }
         Ok(Self {
             display_flags,
             horizontal_justification,
@@ -1456,7 +1491,7 @@ impl Mp4SampleEntryTx3g {
             background_color_rgba,
             default_text_box: default_text_box.unwrap_or((0, 0, 0, 0)),
             default_style,
-            font_table: font_table.unwrap_or_default(),
+            font_table,
         })
     }
 
