@@ -1,7 +1,7 @@
 # remux サンプルプログラムが composition_time_offset を引き継がず A/V 同期が崩れる
 
 - Created: 2026-08-19
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-29
 - Branch: feature/fix-remux-composition-time-offset
 - Polished: 2026-08-20
 - Milestone: 2026.2.0
@@ -29,3 +29,17 @@
 
 - remux 後も composition_time_offset が保持される (抽出した remux 関数を呼ぶテストで検証される)
 - 既存テストが全通過する
+
+## 解決方法
+
+`examples/remux.py` の変換ループを `remux(demuxer, muxer) -> int` 関数に抽出し、`Mp4MuxSample` 構築時に `composition_time_offset=sample.composition_time_offset` を渡すようにした。`main()` は抽出した関数を呼ぶだけの構成になり、戻り値のサンプル数で `Total samples processed` を出力する。`remux()` は変換のみを担い、finalize と出力は `main()` 側に残した。
+
+`tests/test_mp4.py` から `examples/remux.py` の関数を import して駆動するため、`pyproject.toml` の `[tool.pytest.ini_options]` に `pythonpath = ["examples"]` を追加した。静的型チェッカ (ty) は pytest の ini を読まないため、`[tool.ty.environment]` に `extra-paths = ["examples"]` も追加した。`examples/` にパッケージの `__init__.py` は無いので、import 形式は `from remux import remux` である。
+
+`tests/test_mp4.py` に `test_remux_preserves_composition_time_offset` を追加した。mux → demux → mux → demux の remux 経路で、正値・負値・0 (負値は ctts version 1) を含むオフセット列が一致することに加え、keyframe フラグとサンプルデータの劣化がないことも検証する。既存の `test_mux_demux_roundtrip_with_composition_time_offset` は書き換えていない。抽出関数を削った状態で remux 経路を通すとオフセットがすべて None に化けることを手元のスクリプトで確認しており、テストは本物の実装経路 (コピーではない) を検証する。
+
+テスト追加に合わせて `pyproject.toml` の `[tool.ty]` 見出し直後の空行を補い、tombi のフォーマット規約に揃えた。
+
+動作変更として、従来 100 サンプルごとに出力していた進捗表示 (`Processed N samples`) は削除した。変換ループを純粋な関数に抽出するにあたり、進捗出力がテスト駆動時のノイズになるためで、総数表示は `Total samples processed` として残っている。サンプルプログラムの出力のみの変更でライブラリ API には影響しない。
+
+`CHANGES.md` の `## develop` に `[FIX]` を追加し、変換ループ抽出と pytest / ty 設定追加を `### misc` の `[UPDATE]` に記載した。
