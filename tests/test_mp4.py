@@ -1208,8 +1208,9 @@ def test_multiple_samples_with_faststart():
 def test_demuxer_with_invalid_data():
     """EOF に達した無効なデータは空リストになる
 
-    目的: moov 発見前に EOF に達するデータ (32 バイト未満) はパースエラーに
-          ならず「トラック 0 本の正常終了」になることを確認する
+    目的: ftyp パース完了前 (position 0 のショートリード) に EOF に達するデータ
+          (32 バイト未満) はパースエラーにならず「トラック 0 本の正常終了」に
+          なることを確認する
     検証: 16 バイトの無効データで空リストになること (パースエラーの
           RuntimeError 化は 32 バイト以上のデータでのみ発生する)
     """
@@ -1222,6 +1223,94 @@ def test_demuxer_with_invalid_data():
     # 無効なデータの場合、空のリストになる（ブロックしないこと）
     samples = list(demuxer)
     assert samples == []
+
+
+def test_demuxer_short_read_after_ftyp_raises_mp4_exception():
+    """ftyp パース成功後のショートリードは Mp4Exception になる
+
+    目的: moov が途中で切れた破損ファイルが「トラック 0 本の正常終了」として
+          握りつぶされないことを確認する。ftyp パース成功後 (position > 0) の
+          要求サイズに満たない読み込みはコアが回復不能なエラー状態になるため、
+          バインディング側も Mp4Exception で報告する
+    検証: 有効な ftyp (20 バイト) + moov ボックスヘッダ宣言 (8 バイト) + 本体一部
+          (4 バイト) の 32 バイトデータで、moov ヘッダ読み取り (32 バイト要求に
+          12 バイトしか残っていない) がショートリードとなり、tracks アクセスと
+          反復の両方が Mp4Exception を発生させ、エラー後の tracks が空リスト・
+          以後の反復が StopIteration で終わること。また完全な 32 バイト ftyp の
+          直後で EOF に達するファイル (moov 無し) も同様に Mp4Exception となる
+          こと (32 バイト境界の固定)
+    """
+    # ftyp の直後に moov ボックスヘッダの一部があり、moov が途中で切れたデータ
+    data = b"\x00\x00\x00\x14ftypisom\x00\x00\x00\x00isom\x00\x00\x00\x18moov\x00\x00\x00\x00"
+
+    # tracks アクセスでショートリードが Mp4Exception として報告される
+    # ("does not contain the required data" はコアの handle_input() が生成する
+    # ショートリード専用の理由文であり、通常のデコード失敗と区別するために突く)
+    demuxer = Mp4FileDemuxer(io.BytesIO(data))
+    with pytest.raises(
+        Mp4Exception, match=r"Failed to decode MP4 box.*does not contain the required data"
+    ):
+        _ = demuxer.tracks
+    # エラー後のデマクサーは tracks が空リスト・以後の反復が StopIteration
+    assert demuxer.tracks == [], "エラー後の tracks が空リストであること"
+    with pytest.raises(StopIteration):
+        next(iter(demuxer))
+
+    # 反復でもショートリードが Mp4Exception として報告される
+    demuxer = Mp4FileDemuxer(io.BytesIO(data))
+    with pytest.raises(
+        Mp4Exception, match=r"Failed to decode MP4 box.*does not contain the required data"
+    ):
+        for _ in demuxer:
+            pass
+
+    # Mp4Exception は RuntimeError のサブクラスとして捕捉でき、メッセージは
+    # 既存のパースエラーと同じ "mp4 error:" 形式である
+    demuxer = Mp4FileDemuxer(io.BytesIO(data))
+    with pytest.raises(RuntimeError, match=r"^mp4 error: "):
+        _ = demuxer.tracks
+
+    # 完全な ftyp (32 バイト) の直後で EOF に達するファイルも、ftyp パース成功後の
+    # ショートリードとして Mp4Exception になる (32 バイト境界の回帰固定)
+    ftyp32 = struct.pack(">I", 32) + b"ftypisom" + struct.pack(">I", 0) + b"isommp42avc1isom"
+    assert len(ftyp32) == 32, "ftyp ボックスがちょうど 32 バイトであること"
+    demuxer = Mp4FileDemuxer(io.BytesIO(ftyp32))
+    with pytest.raises(Mp4Exception, match="does not contain the required data"):
+        _ = demuxer.tracks
+
+
+def test_demuxer_short_read_before_ftyp_completes():
+    """ftyp パース完了前のショートリードはトラック 0 本の正常終了
+
+    目的: 空ファイルや ftyp 読み取り途中 (position 0 のショートリード) の
+          部分データは破損検出の対象ではなく、真の EOF として従来どおり
+          正常終了することを確認する。position 0 のショートリードとは
+          「ftyp ボックスの読み取り (先頭のヘッダ要求 32 バイトを含む) が
+          完了しないまま EOF に達する」ことであり、ftyp 自体が完全でも
+          ファイル全体が 32 バイトに満たなければここに入る
+    検証: 0 バイト・ftyp ボックスヘッダ分 (8 バイト) だけあるデータ・完全な
+          24 バイト ftyp のみ (全体が 32 バイト未満) のデータ・ftyp が size=32
+          を宣言して 24 バイトで切れるデータ・ftyp が size=100 を宣言して
+          32 バイト (ヘッダ要求は満たすが本体が足りない) で切れるデータの
+          すべてで、エラーなくサンプル空リスト・tracks 空リストになること
+    """
+    payloads = [
+        b"",  # 空ファイル
+        b"\x00\x00\x00\x20ftyp",  # ヘッダ要求 (32 バイト) に満たず position 0 で切れる
+        # 完全な 24 バイト ftyp のみ。ftyp としては valid だが 32 バイト未満で
+        # 初回ヘッダ要求が満たされず正常終了する
+        struct.pack(">I", 24) + b"ftypisom" + struct.pack(">I", 0) + b"isommp42",
+        # ftyp ヘッダが size=32 を宣言するが本体が続き 24 バイトで切れている
+        struct.pack(">I", 32) + b"ftypisom\x00\x00\x02\x00isom" + b"\x00" * 4,
+        # ftyp が size=100 を宣言しヘッダ読み (32 バイト) は通るが本体が切れている
+        struct.pack(">I", 100) + b"ftyp" + b"\x00" * 24,
+    ]
+    for payload in payloads:
+        demuxer = Mp4FileDemuxer(io.BytesIO(payload))
+        # position 0 のショートリードは EOF として正常終了すること
+        samples = list(demuxer)
+        assert samples == [], f"{len(payload)} バイトの入力が正常終了すること"
+        assert demuxer.tracks == [], f"{len(payload)} バイトの入力でトラック 0 本であること"
 
 
 def test_demuxer_reports_parse_error():

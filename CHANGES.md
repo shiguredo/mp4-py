@@ -76,6 +76,10 @@
 - [FIX] Mp4SampleEntryTx3g をデフォルト引数で構築できるようにする
   - 省略した background_color_rgba が 4 バイト検証を通過せず ValueError になっていたため、透明背景 (RGBA 全ゼロ) を既定値にする
   - @voluntas
+- [FIX] Demuxer の moov 読み取り中のショートリードを Mp4Exception として報告する
+  - ftyp パース成功後に moov を読み切れず EOF に達する破損 MP4 が「トラック 0 本の正常終了」として無エラーで通る経路を解消する
+  - ftyp パース完了前のショートリード (空ファイルや ftyp が読みきれない部分データ) は従来どおり正常終了のまま
+  - @voluntas
 
 ### misc
 
