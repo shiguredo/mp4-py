@@ -3,7 +3,7 @@
 - Created: 2026-08-29
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-avc1-high-profile-required-fields
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-30
 
 ## 目的
 
@@ -33,9 +33,9 @@ muxer.finalize()  # RuntimeError: mp4 error: Failed to encode MP4 box: InvalidIn
 
 - `append_sample` まで成功し、失敗は `finalize` で発生する。エラーメッセージは欠落フィールドを 1 つしか挙げない
 - `chroma_format=1` を与えると次は `bit_depth_luma_minus8`、さらに `bit_depth_luma_minus8=0` を与えると `bit_depth_chroma_minus8` と、別のエラーへ順番に進む。3 つとも与えて初めて成功する
-- `avc_profile_indication` を 66 / 77 にすると 3 フィールド省略のまま finalize まで成功する
+- `avc_profile_indication` を 66 / 77 / 88 にすると 3 フィールド省略のまま finalize まで成功する
 
-`tests/conftest.py` の `st_avc1_sample_entry` は Baseline / Main のプロファイルのみ生成するため、PBT はこの経路を踏まない。
+`tests/conftest.py` の `st_avc1_sample_entry` は Baseline / Main / Extended (66 / 77 / 88) のプロファイルのみ生成するため、PBT はこの経路を踏まない。
 
 なお、本不具合は「既定値が後段の必須要件と矛盾する」という意味で、`Mp4SampleEntryTx3g` の `background_color_rgba` で発生した不具合と同型である。
 
@@ -45,6 +45,8 @@ muxer.finalize()  # RuntimeError: mp4 error: Failed to encode MP4 box: InvalidIn
 - 制約はコアのフィールド doc に明記されているため、値域検証をコア doc 明記分に限定する既存方針 (ビット幅検証の整備時の方針) と衝突しない
 - エラーメッセージは英語で、期待する条件と実際の値を含める (`validate_range` の方式を踏襲する)
 - 検証を追加した場合、66 / 77 / 88 では 3 フィールド省略が従来どおり通ることを単体テストで固定する。プロファイルと 3 フィールドの組合わせは有限なので `pytest.mark.parametrize` の `ids` 付きで検証する
+- `from_box` (demux 経路) は対象外とする。入力データ由来の値をそのまま保持する既存方針のため検証を追加しない
+- 検証の追加に伴い、「AVC1 High Profile と Opus input_sample_rate の PBT カバレッジを拡張する」issue (open) の戦略は、profile=100 で 3 フィールドを省略すると構築時に `ValueError` になるため、3 フィールドを常に与える形に整合させる必要がある
 
 ## 完了条件
 
