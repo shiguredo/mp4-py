@@ -3,7 +3,7 @@
 - Created: 2026-07-22
 - Completed: {YYYY-MM-DD}
 - Branch: feature/test-add-free-threading-concurrent-muxer-append
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-31
 - Milestone: 2026.2.0
 
 ## 目的
@@ -17,72 +17,77 @@ Free-Threading ビルドは `CODEBASE.md` の Free-Threading 節が定めるサ�
 - `test_muxer_close_concurrent`: 8 スレッドから close を並列に呼ぶ
 - `test_multiple_muxers_parallel`: 別インスタンスの Muxer を並列に動かす
 
-同一 Muxer に対する `append_sample` の並列呼び出しは検証なし。ロックで直列化される想定だが、次のケースが未検証:
-1. 8 スレッドが同一 Muxer に append_sample を呼び、全サンプルが正しく mux される
-2. finalize 後に demux し、全サンプルが復元でき、データ整合性が保たれる
+同一 Muxer に対する `append_sample` の並列呼び出しは検証なし。実装側は `src/lib.rs` の `Mp4FileMuxer::append_sample` が `lock_py_attached` で状態ロックを取得したまま tell / write を実行するため、並列呼び出しは Muxer 内部で直列化される。この直列化が正しく機能して全サンプルが mux されることを固定するテストが欠けている。
+
+なお、本ファイルの全テストはファイル先頭の `pytestmark` (GIL 有効時スキップ) により Free-Threading (3.14t) ビルドでだけ実行される。
 
 ## 設計方針
 
-- 8 スレッドから独立サンプルを append → finalize → demux で全サンプル復元とデータ整合性を確認するテストを追加
+- Python 側の `threading.Lock` は使わない。Python 側で直列化すると Muxer 内部の状態ロックが検証対象から外れ、逐次実行と等価になる
+- 全サンプルで同一の `Mp4SampleEntryVp08` を明示的に渡す。`sample_entry=None` はコア仕様では「前のサンプルと同じ」を意味し、先頭サンプル (新規チャンクの解決) で `None` だと `MissingSampleEntry` になるため、どのスレッドが先に追加するかで結果が変わらない入力を用意する
+- 8 スレッドから独立サンプルを append → finalize → demux で全サンプル復元とデータ整合性を確認する
 - サンプルには一意な pattern (thread_id + sample_index の組み合わせ) を埋め込み、demux 側で識別可能にする
 
 ## 完了条件
 
-- 同一 Muxer への並列 `append_sample` が競合なく完了し、全サンプルが順序どおり (append 順ではなく mux 順) に demux できる
-- Free-Threading ビルドと通常ビルドの両方で通過
-- タイムアウト内 (10 秒) で完走
+- 8 スレッドから同一 Muxer への並列 `append_sample` が競合なく完了し、全サンプルが mux される
+- demux で 80 サンプル (8 スレッド × 10 サンプル) がすべて復元でき、各サンプルのデータが thread_id とサンプル番号から決まる期待値と一致する
+- Free-Threading (3.14t) ビルドで通過し、GIL 有効ビルドでは既存の `pytestmark` によりスキップされる
+- pytest のタイムアウト (既定 10 秒) 内で完走する
 
 ## 解決方法
 
-1. `tests/test_free_threading.py` に以下のテストを追加:
+1. `tests/test_free_threading.py` に以下のテストを追加する:
 
 ```python
 def test_muxer_concurrent_append() -> None:
-    """複数スレッドから同一 Muxer に append_sample を呼んでも壊れない"""
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
+    """複数スレッドから同一 Muxer に append_sample を並列に呼んでも壊れない
 
+    目的: Mp4FileMuxer が内部の状態ロックで append_sample を直列化する実装
+          のもとで、全サンプルが正しく mux されることを確認する
+    検証: demux で全 80 サンプルが重複なく取得でき、各サンプルのデータが
+          thread_id とサンプル番号から決まる期待値と一致すること
+    """
     output_buffer = io.BytesIO()
     muxer = Mp4FileMuxer(output_buffer)
-    lock = threading.Lock()  # Muxer 側のロックに加えて Python 側でも直列化
-
-    NUM_THREADS = 8
-    SAMPLES_PER_THREAD = 10
+    sample_entry = Mp4SampleEntryVp08(width=1920, height=1080)
+    samples_per_thread = SAMPLES_PER_FILE
 
     def append_samples(thread_id: int) -> None:
-        for i in range(SAMPLES_PER_THREAD):
-            # thread_id と i をエンコードした一意のデータ
-            data = f"t{thread_id:02d}s{i:04d}".encode() + b"\x00" * 100
+        for i in range(samples_per_thread):
+            # thread_id と i を一意なインデックスに変換してデータに埋め込む
+            data = create_dummy_sample(thread_id * samples_per_thread + i)
             sample = Mp4MuxSample(
                 track_kind="video",
-                sample_entry=Mp4SampleEntryVp08(width=320, height=240)
-                    if (thread_id == 0 and i == 0) else None,
+                # None は「前のサンプルと同じ」を意味し、先頭サンプルの
+                # タイミングに依存するため、全サンプルで明示的に渡す
+                sample_entry=sample_entry,
                 keyframe=True,
-                timescale=30,
-                duration=1,
+                timescale=1000000,
+                duration=33333,
                 data=data,
             )
-            with lock:  # Muxer 側の同時 append は失敗しうるため、意図的に直列化
-                muxer.append_sample(sample)
+            muxer.append_sample(sample)
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         list(executor.map(append_samples, range(NUM_THREADS)))
 
     muxer.finalize()
 
-    # demux し直して全サンプルが取得できることを確認
+    # demux し直して全サンプルが取得できることを確認する
     output_buffer.seek(0)
     with Mp4FileDemuxer(output_buffer) as demuxer:
         samples = list(demuxer)
 
-    assert len(samples) == NUM_THREADS * SAMPLES_PER_THREAD
-    # データ整合性: 各サンプルの先頭 8 バイトが tXXsYYYY 形式
-    for sample in samples:
-        prefix = sample.data[:8]
-        assert prefix.startswith(b"t") and b"s" in prefix, \
-            f"サンプルデータが破損: {prefix!r}"
+    assert len(samples) == NUM_THREADS * samples_per_thread
+    # データは thread_id とサンプル番号から決定的に生成されるため、
+    # 欠落と重複は集合の不一致として検出できる
+    expected = {
+        create_dummy_sample(thread_id * samples_per_thread + i)
+        for thread_id in range(NUM_THREADS)
+        for i in range(samples_per_thread)
+    }
+    assert {sample.data for sample in samples} == expected
 ```
 
-**注意**: 上記テストは Python 側で `threading.Lock` を追加している。これは `append_sample` の並列呼び出しが本質的に seekable stream に対する `tell` + `write` を必要とし、`Mp4FileMuxer` が保持するストリーム (`stream`) の状態を排他しないと data_offset がずれるため。純粋に「Muxer 内部ロックが機能する」ことを検証したいなら、Python 側ロックを外して失敗を許容するテストを別に用意する。
-
-2. 実行時間が長い場合は `@pytest.mark.timeout(30)` を付ける
+2. 実行時間が長い場合は `@pytest.mark.timeout(30)` を付ける (pytest-timeout のマーカー)
