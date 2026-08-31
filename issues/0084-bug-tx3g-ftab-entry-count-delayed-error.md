@@ -3,7 +3,7 @@
 - Created: 2026-08-29
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-tx3g-ftab-entry-count-limit
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-31
 
 ## 目的
 
