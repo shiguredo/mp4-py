@@ -3,7 +3,7 @@
 - Created: 2026-08-13
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-pytest-hang-on-thread-deadlock
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-09-01
 - Milestone: 2026.2.0
 
 ## 目的
@@ -26,25 +26,30 @@ pytest-timeout の signal 方式は、タイムアウト時に SIGALRM でテス
 
 ### 方針 A: ワーカー完了待ちをタイムアウト付きにし、ハング時に失敗として報告する
 
+- ThreadPoolExecutor は `with` コンテキストマネージャで使わず、明示的に生成と shutdown を管理する。`with` の `__exit__` は `shutdown(wait=True)` を実行してデッドロックワーカーの `join()` でブロックするため、残したままだと現状と同じハングになる
 - `f.result()` での無制限待ちをやめ、`concurrent.futures.as_completed(futures, timeout=N)` で完了待ちする
 - タイムアウト時は `executor.shutdown(wait=False, cancel_futures=True)` でワーカーを打ち切り、テスト失敗として報告する
+- 正常に全ワーカーが完了した場合のみ `executor.shutdown(wait=True)` を呼び、ワーカースレッドを確実に終了させる
 - 実行中ワーカーの強制終了は Python の ThreadPoolExecutor では不可能なため、ワーカーが残る場合のプロセス終了時の join ハングは完全には防げない。その場合は CI のジョブタイムアウトが最終手段となる (0016 の注記と同じ扱い)
 - N は pytest のタイムアウト (10 秒) より短い値とする
 
 ### 方針 B: ポーリングに上限を設ける
 
 - queue ポーリング型のテスト (test_demuxer_next_with_parallel_data_access 等) は、ポーリング回数に上限を設けて異常終了を検出する
-- 方針 A と併用する形で検討する
+- 方針 A と併用する。方針 A は executor の完了待ちを対象とし、方針 B はデッドロック時に reader スレッドが無限ポーリングして残存スレッドを増やすのを防ぐ補助である
 
 ## 完了条件
 
-- `tests/test_free_threading.py` の ThreadPoolExecutor 使用テスト (7 件すべて) が、ワーカーのデッドロック時に pytest プロセスをハングさせず、タイムアウト失敗として報告する
-- 正常時は既存の全テストが変更前と同じく通過する (3.14t で 7 passed、GIL 有効環境で 91 passed / 7 skipped)
+- `tests/test_free_threading.py` の ThreadPoolExecutor 使用テスト (7 件すべて) が、ワーカーのデッドロック時にテストをタイムアウト失敗として報告し、デッドロックをテストハングで隠さない
+- ワーカー残存によるプロセス終了時の join ハングは防げないため、CI のジョブタイムアウトを最終手段として許容する
+- 正常時は既存の全テストが変更前と同じく通過する (3.14t CI は test_free_threading.py 7 件と test_mp4.py 72 件を実行、GIL 有効環境は 133 passed / 7 skipped。2026-09-01 時点)
 - テスト実行は CODEBASE.md の pytest 規約 (60 秒以内、`--timeout=10`) 内で完走する
 
 ## 解決方法
 
-1. `tests/test_free_threading.py` の全 ThreadPoolExecutor 使用テストの完了待ちを、`concurrent.futures.as_completed(futures, timeout=N)` + タイムアウト時の `executor.shutdown(wait=False, cancel_futures=True)` に変更する
-2. タイムアウト時の失敗メッセージは英語で、デッドロックの可能性を明示する
-3. 変更後は 3.14t 環境で全テスト通過を確認する (`NO_UV_SYNC=1 uv run pytest tests/test_free_threading.py --timeout=10`)
-4. 正常時は既存の全テスト (GIL 有効環境を含む) が通過することを確認する
+1. ThreadPoolExecutor を `with` コンテキストマネージャで使わず、明示的な生成と shutdown の管理に変更する (`__exit__` の `shutdown(wait=True)` がデッドロックワーカーの `join()` でブロックするため)
+2. `tests/test_free_threading.py` の全 ThreadPoolExecutor 使用テストの完了待ちを、`concurrent.futures.as_completed(futures, timeout=N)` + タイムアウト時の `executor.shutdown(wait=False, cancel_futures=True)` に変更する
+3. queue ポーリング型テスト (test_demuxer_next_with_parallel_data_access) にポーリング回数の上限を設ける
+4. タイムアウト時の失敗メッセージは日本語で、デッドロックの可能性を明示する
+5. 変更後は 3.14t 環境で全テスト通過を確認する (`NO_UV_SYNC=1 uv run pytest tests/test_free_threading.py --timeout=10`)
+6. 正常時は既存の全テスト (GIL 有効環境を含む) が通過することを確認する
