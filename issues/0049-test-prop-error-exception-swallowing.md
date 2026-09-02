@@ -3,7 +3,7 @@
 - Created: 2026-08-16
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-prop-error-exception-swallowing
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-09-02
 - Milestone: 2026.2.0
 
 ## 目的
@@ -19,13 +19,13 @@
 
 0017 で解消した `prop_fuzzing.py` と同じ問題が残っている。0017 の実装で確立した方式 (破損データ由来メッセージのホワイトリスト assert) を適用すれば、想定外の RuntimeError を検出できるようになる。
 
-なお、demux のパースエラーはバインディング層 (`src/lib.rs` の `__next__`) で `PyStopIteration` に変換され Python 側に届かないことが多いため、実際に発火するのは主に `sample.data` アクセス時のサイズ検証エラーである (0017 の実装で実測済み)。エラー隠蔽の解消自体は 0036 のスコープ。
+なお、0036 の実装後、パースエラー (DecodeError / SampleTableError / InvalidState) は `src/lib.rs` の `__next__` / `ensure_tracks` で `RuntimeError` (`mp4 error: ...` 形式) として Python 側に報告される。`feed_required_input` のエラー (`too many iterations` / `Required input ... too large`) と `sample.data` アクセス時のサイズ検証エラー (`Sample data size too large`) は `Mp4Exception` (RuntimeError 派生) として届く。したがって、この 2 テストにホワイトリスト assert を適用すれば、想定外の例外を検出できる。
 
 ## 設計方針
 
 - `prop_fuzzing.py` の `ALLOWED_ERROR_PATTERNS` と同じホワイトリスト assert 方式に統一する
-- ホワイトリストは重複を避けるため `prop_fuzzing.py` から import するか、共通モジュールへ移動するかを検討する (両ファイルで同じ定数を二重定義しないこと)
-- パース失敗で空リストになる経路 (エラーではなく空結果) は従来どおり許容する (0036 の実装後に見直す)
+- ホワイトリストは二重定義を避けるため `prop_fuzzing.py` から import する (共通モジュール化は prop_fuzzing.py の変更も伴うため行わない)
+- moov 発見前に EOF に達する経路はエラーにならず空リスト (トラック 0 本の正常終了) になるため、従来どおり許容する (0036 で確定した仕様)
 
 ## 完了条件
 
@@ -35,7 +35,7 @@
 
 ## 解決方法
 
-1. `prop_fuzzing.py` のホワイトリスト定数を共通化する (import または共通モジュール化。二重定義しない)
-2. 2 テストの try/except をホワイトリスト assert に書き換える
+1. `prop_fuzzing.py` の `ALLOWED_ERROR_PATTERNS` を import する (二重定義しない)
+2. 2 テストの try/except をホワイトリスト assert に書き換える (`sample.data` アクセスも try の範囲に含める)
 3. `NO_UV_SYNC=1 uv run pytest tests/ --timeout=10` で全テスト通過を確認する
 4. CHANGES.md の `### misc` にエントリを追記する
